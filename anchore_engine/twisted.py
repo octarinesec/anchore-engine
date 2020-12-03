@@ -3,30 +3,30 @@ Twisted framework specific code for base plugin functionality. Used by each plug
 
 """
 
-import copy
+import datetime
+import faulthandler
 import json
 import os
 import sys
-import datetime
+import warnings
+
 from twisted import web
 from twisted.application import service
 from twisted.application.internet import TimerService, StreamServerEndpointService
-from twisted.internet.endpoints import TCP4ServerEndpoint, SSL4ServerEndpoint
-
 from twisted.internet import ssl, reactor
+from twisted.internet.endpoints import TCP4ServerEndpoint, SSL4ServerEndpoint
 from twisted.internet.task import LoopingCall
+from twisted.logger import LogBeginner, LogPublisher
 from twisted.python import log
 from twisted.python import usage
-from twisted.web.resource import Resource
-from twisted.web import wsgi, rewrite
 from twisted.web import server
+from twisted.web import wsgi, rewrite
+from twisted.web.resource import Resource
 
 from anchore_engine.apis.ssl import _load_ssl_key, _load_ssl_cert
-from anchore_engine.subsys import logger
 from anchore_engine.configuration import localconfig
 from anchore_engine.service import ApiService
-from anchore_engine import utils
-import faulthandler
+from anchore_engine.subsys import logger
 
 # For the debug CLI, require a code modification to enable it. This allows on-host edits of the script and restart, but no accidental config from env vars or config.
 enable_dangerous_debug_cli = False
@@ -37,7 +37,7 @@ enable_thread_dumper = (
 )
 
 if enable_dangerous_debug_cli or enable_thread_dumper:
-    from twisted.application import internet, service
+    from twisted.application import internet
     from twisted.conch.insults import insults
     from twisted.conch.manhole import ColoredManhole
     from twisted.conch.telnet import TelnetTransport, TelnetBootstrapProtocol
@@ -139,7 +139,7 @@ class WsgiApiServiceMaker(object):
                 "No configuration found to initialize logging for. Expecting other errors, so setting log level to DEBUG"
             )
             log_level = "DEBUG"
-            log_to_db = False
+            json_logging_enabled = False
         else:
             try:
                 service_config = self.global_configuration["services"][
@@ -148,7 +148,10 @@ class WsgiApiServiceMaker(object):
                 log_level = service_config.get(
                     "log_level", self.global_configuration.get("log_level", "INFO")
                 )
-                log_to_db = self.global_configuration.get("log_to_db", False)
+                json_logging_enabled = service_config.get(
+                    "json_logging_enabled",
+                    self.global_configuration.get("json_logging_enabled", False),
+                )
             except Exception as err:
                 log.err(
                     "error checking for enabled services, check config file - exception: "
@@ -158,8 +161,12 @@ class WsgiApiServiceMaker(object):
                     "error checking for enabled services, check config file - exception: "
                     + str(err)
                 )
-
-        logger.set_log_level(log_level, log_to_db=log_to_db)
+        log_beginner = LogBeginner(LogPublisher(), sys.stderr, sys, warnings)
+        logger.configure_logging(
+            log_level,
+            enable_json_logging=json_logging_enabled,
+            log_beginner=log_beginner,
+        )
 
     def _check_enabled(self):
         if (
@@ -225,8 +232,6 @@ class WsgiApiServiceMaker(object):
             self._init_logging()
 
             self._check_enabled()
-
-            # logger.enable_bootstrap_logging(self.tapname)
 
             assert issubclass(self.service_cls, ApiService)
             self.anchore_service = self.service_cls(options=options)
@@ -348,26 +353,6 @@ class WsgiApiServiceMaker(object):
         # Build the main site server
         site = server.Site(root)
         listen = self.anchore_service.configuration["listen"]
-
-        # Disable the twisted access logging by overriding the log function as it uses a raw 'write' and cannot otherwise be disabled, iff enable_access_logging is set to False in either the service or global config
-        try:
-            eal = True
-            if "enable_access_logging" in self.anchore_service.configuration:
-                eal = self.anchore_service.configuration.get(
-                    "enable_access_logging", True
-                )
-            elif "enable_access_logging" in self.configuration:
-                eal = self.configuration.get("enable_access_logging", True)
-
-            if not eal:
-
-                def _null_logger(request):
-                    pass
-
-                site.log = _null_logger
-
-        except:
-            pass
 
         if (
             str(self.anchore_service.configuration.get("ssl_enable", "")).lower()

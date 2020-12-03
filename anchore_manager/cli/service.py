@@ -1,25 +1,21 @@
+import importlib
 import os
-import re
+import subprocess
 import sys
+import threading
 import time
+
 import click
 import psutil
-import importlib
-import threading
-import subprocess
+
 import anchore_engine.configuration.localconfig
-
-from watchdog.observers import Observer
-from watchdog.events import RegexMatchingEventHandler
-
+import anchore_engine.db.entities.common
 import anchore_manager.util
 import anchore_manager.util.db
 import anchore_manager.util.logging
 import anchore_manager.util.proc
-from anchore_manager.util.proc import ExitCode, fail_exit, doexit
 from anchore_manager.util.logging import log_error, logger
-
-import anchore_engine.db.entities.common
+from anchore_manager.util.proc import ExitCode, doexit
 
 service_map = {
     "analyzer": "anchore-worker",
@@ -28,64 +24,6 @@ service_map = {
     "catalog": "anchore-catalog",
     "policy_engine": "anchore-policy-engine",
 }
-
-
-class AnchoreLogWatcher(RegexMatchingEventHandler):
-    regexes = [re.compile(".*/anchore-.*\.log$")]
-    files = {}
-
-    def do_close(self, event):
-        if event.src_path in self.files and self.files[event.src_path]["filehandle"]:
-            self.files[event.src_path]["filehandle"].close()
-        self.files[event.src_path] = {"filehandle": None, "filetell": 0}
-
-    def on_deleted(self, event):
-        if event.src_path not in self.files:
-            self.files[event.src_path] = {"filehandle": None, "filetell": 0}
-
-        self.do_close(event)
-
-    def on_modified(self, event):
-        if event.src_path not in self.files:
-            self.files[event.src_path] = {"filehandle": None, "filetell": 0}
-
-        if not self.files[event.src_path]["filehandle"]:
-            if os.path.exists(event.src_path):
-                self.files[event.src_path]["filehandle"] = open(event.src_path)
-
-        if self.files[event.src_path]["filehandle"]:
-            patt = re.match(".*anchore-(.*)\.log$", event.src_path)
-            if patt:
-                logname = patt.group(1)
-            else:
-                logname = event.src_path
-
-            for line in self.files[event.src_path]["filehandle"].readlines():
-                sys.stdout.write("[service:" + str(logname) + "] " + line)
-
-            self.files[event.src_path]["filetell"] = self.files[event.src_path][
-                "filehandle"
-            ].tell()
-
-    def on_created(self, event):
-        if event.src_path not in self.files:
-            self.files[event.src_path] = {"filehandle": None, "filetell": 0}
-
-        if self.files[event.src_path]["filehandle"]:
-            self.do_close(event)
-
-        if os.path.exists(event.src_path):
-            self.files[event.src_path]["filehandle"] = open(event.src_path)
-            self.files[event.src_path]["filetell"] = 0
-
-    def on_moved(self, event):
-        if event.src_path not in self.files:
-            self.files[event.src_path] = {"filehandle": None, "filetell": 0}
-        self.on_created(event)
-
-    def on_any_event(self, event):
-        if event.src_path not in self.files:
-            self.files[event.src_path] = {"filehandle": None, "filetell": 0}
 
 
 class ServiceThread:
@@ -168,7 +106,6 @@ def terminate_service(service, flush_pidfile=False):
 
 def startup_service(service, configdir):
     pidfile = "/var/run/anchore/" + service + ".pid"
-    logfile = "/var/log/anchore/" + service + ".log"
     # os.environ['ANCHORE_LOGFILE'] = logfile
 
     logger.info("cleaning up service: {}".format(str(service)))
@@ -179,22 +116,12 @@ def startup_service(service, configdir):
         if os.path.exists(f):
             twistd_cmd = f
 
-    cmd = [
-        twistd_cmd,
-        "--logger=anchore_engine.subsys.twistd_logger.logger",
-        "--pidfile",
-        pidfile,
-        "-n",
-        service,
-        "--config",
-        configdir,
-    ]
+    cmd = [twistd_cmd, "--pidfile", pidfile, "-n", service, "--config", configdir]
     logger.info("starting service: {}".format(str(service)))
     logger.info("\t {}".format(" ".join(cmd)))
 
     try:
         newenv = os.environ.copy()
-        newenv["ANCHORE_LOGFILE"] = logfile
         pipes = subprocess.Popen(cmd, env=newenv)
         sout, serr = pipes.communicate()
         rc = pipes.returncode
@@ -533,34 +460,21 @@ def start(
                 terminate_service(service, flush_pidfile=True)
             sys.exit(1)
         else:
-            # start up the log watchers
             try:
-                observer = Observer()
-                observer.schedule(AnchoreLogWatcher(), path="/var/log/anchore/")
-                observer.start()
-
-                try:
-                    while True:
-                        time.sleep(1)
-                        if localconfig.get(
-                            "auto_restart_services", False
-                        ):  # 'auto_restart_services' in localconfig and localconfig['auto_restart_services']:
-                            for service_thread in keepalive_threads:
-                                if not service_thread.thread.is_alive():
-                                    logger.info(
-                                        "restarting service: {}".format(
-                                            service_thread.thread.name
-                                        )
+                while True:
+                    time.sleep(1)
+                    if localconfig.get("auto_restart_services", False):
+                        for service_thread in keepalive_threads:
+                            if not service_thread.thread.is_alive():
+                                logger.info(
+                                    "restarting service: {}".format(
+                                        service_thread.thread.name
                                     )
-                                    service_thread.start()
-
-                except KeyboardInterrupt:
-                    observer.stop()
-                observer.join()
-
+                                )
+                                service_thread.start()
             except Exception as err:
-                logger.error(
-                    "failed to startup log watchers - exception: {}".format(str(err))
+                logger.exception(
+                    "Exception received during handling of auto restarting services"
                 )
                 raise err
 

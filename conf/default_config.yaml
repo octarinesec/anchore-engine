@@ -9,8 +9,11 @@
 
 service_dir: ${ANCHORE_SERVICE_DIR}
 tmp_dir: /analysis_scratch
-log_level: ${ANCHORE_LOG_LEVEL}
 cleanup_images: true
+
+# Logging
+log_level: ${ANCHORE_LOG_LEVEL}
+json_logging_enabled: ${ANCHORE_JSON_LOGGING_ENABLED}
 
 # When set, if a registry credential username is set to 'iamauto' for an ecr registry, the engine will
 # use whatever aws creds are available in the standard boto search path (.aws, env, etc)

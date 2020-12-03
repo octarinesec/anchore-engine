@@ -1,6 +1,11 @@
 import json
 import sys
+import os
+import warnings
 from collections import OrderedDict
+
+from twisted.logger import LogPublisher, LogBeginner
+
 from anchore_engine.subsys import logger
 from anchore_manager.util.proc import ExitCode
 from anchore_manager.util.config import DEFAULT_CONFIG
@@ -67,7 +72,13 @@ def log_config(config: dict):
         if config["debug"]:
             log_level = "DEBUG"
 
-        logger.set_log_level(log_level, log_to_stdout=True)
+        enable_json_logging = os.getenv("ANCHORE_JSON_LOGGING_ENABLED", "") == "true"
+        log_beginner = LogBeginner(LogPublisher(), sys.stderr, sys, warnings)
+        logger.configure_logging(
+            log_level,
+            enable_json_logging=enable_json_logging,
+            log_beginner=log_beginner,
+        )
 
     except Exception as err:
         logger.error(format_error_output(config, "service", {}, err))

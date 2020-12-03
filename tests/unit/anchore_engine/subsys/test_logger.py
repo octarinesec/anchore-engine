@@ -47,27 +47,3 @@ def monkeyclass(request):
 def log_to_stdout(monkeyclass):
     monkeyclass.setattr(logger, "_log_to_stdout", True)
     monkeyclass.setattr(logger, "log_level", 99)
-
-
-@pytest.mark.usefixtures("log_to_stdout")
-class TestLoggerFunctions:
-    @pytest.mark.parametrize(
-        "log", [logger.info, logger.warn, logger.error, logger.debug]
-    )
-    def test_info_formats_string(self, capsys, log):
-        log("log message %s", "argument")
-        out, err = capsys.readouterr()
-        assert "[MainThread]" in err
-        assert err.endswith("log message argument\n")
-
-    @pytest.mark.parametrize(
-        "log", [logger.info, logger.warn, logger.error, logger.debug]
-    )
-    def test_info_cant_format_correctly(self, capsys, log):
-        log("log message %s %s", "argument")
-        out, err = capsys.readouterr()
-        assert out == ""
-        assert "Traceback (most recent call last)" in err
-        assert "TypeError: not enough arguments for format string" in err
-        assert "[ERROR] unable to produce log record: log message %s %s" in err
-        assert err.endswith("] log message %s %s\n")

@@ -185,7 +185,7 @@ class BaseService(object, metaclass=ServiceMeta):
 
     def _process_stage_handlers(self, stage):
         logger.info(
-            "Processing init handlers for bootsrap stage: {}".format(stage.name)
+            "Processing init handlers for bootstrap stage: {}".format(stage.name)
         )
         handlers = self.lifecycle_handlers.get(stage, [])
         logger.debug("Executing {} stage {} handlers".format(len(handlers), stage.name))

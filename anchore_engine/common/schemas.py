@@ -6,9 +6,14 @@ import datetime
 
 import marshmallow
 from marshmallow import Schema, post_load, fields
-
+from anchore_engine.utils import datetime_to_rfc3339, rfc3339str_to_datetime
 # For other modules to import from this one instead of having to know/use marshmallow directly
 ValidationError = marshmallow.ValidationError
+
+# Add the rfc3339 format handlers
+fields.DateTime.SERIALIZATION_FUNCS['rfc3339'] = datetime_to_rfc3339
+fields.DateTime.DESERIALIZATION_FUNCS['rfc3339'] = rfc3339str_to_datetime
+fields.DateTime.DEFAULT_FORMAT = 'rfc3339'
 
 
 # TODO: This is not enforced in the interface yet, but should be the input and return type for queue operations in this API
@@ -250,7 +255,7 @@ class ContentTypeDigests(JsonSerializable):
 
 class ImportManifest(JsonSerializable):
     class ImportManifestV1Schema(Schema):
-        metadata = fields.Nested(ImageMetadata.ImageMetadataV1Schema)
+        metadata = fields.Nested(ImageMetadata.ImageMetadataV1Schema, allow_none=True, required=False)
         tags = fields.List(fields.String(), allow_none=True)
         contents = fields.Nested(ContentTypeDigests.ContentTypeDigestsV1Schema)
         digest = fields.String(required=True)

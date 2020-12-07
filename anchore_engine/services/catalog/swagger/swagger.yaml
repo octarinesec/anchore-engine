@@ -2166,11 +2166,129 @@ definitions:
     type: array
     items:
       $ref: "#/definitions/ImageImportOperation"
-  ImagePackageManifest:
-    type: object
-    # TODO: Insert Syft schema v1 here in PackageManifest
   PackageDigestList:
     type: array
     items:
       type: string
       description: String digest of an uploaded content
+  ImagePackageManifest:
+    required:
+      - artifacts
+      - source
+      - distro
+    properties:
+      artifacts:
+        items:
+          "$ref": "#/definitions/ImportPackage"
+        type: array
+      source:
+        "$ref": "#/definitions/ImportSource"
+      distro:
+        "$ref": "#/definitions/ImportDistribution"
+      descriptor:
+        "$ref": "#/definitions/ImportDescriptor"
+      schema:
+        "$ref": "#/definitions/ImportSchema"
+    additionalProperties: true
+    type: object
+  ImportDescriptor:
+    required:
+      - name
+      - version
+    properties:
+      name:
+        type: string
+      version:
+        type: string
+    additionalProperties: false
+    type: object
+  ImportDistribution:
+    required:
+      - name
+      - version
+      - idLike
+    properties:
+      name:
+        type: string
+      version:
+        type: string
+      idLike:
+        type: string
+    additionalProperties: false
+    type: object
+  ImportPackageLocation:
+    required:
+      - path
+    properties:
+      path:
+        type: string
+      layerID:
+        type: string
+    additionalProperties: false
+    type: object
+  ImportPackage:
+    required:
+      - name
+      - version
+      - type
+      - locations
+      - licenses
+      - language
+      - cpes
+      - metadataType
+    properties:
+      name:
+        type: string
+      version:
+        type: string
+      type:
+        type: string
+      foundBy:
+        type: string
+      locations:
+        items:
+          "$schema": http://json-schema.org/draft-04/schema#
+          "$ref": "#/definitions/ImportPackageLocation"
+        type: array
+      licenses:
+        items:
+          type: string
+        type: array
+      language:
+        type: string
+      cpes:
+        items:
+          type: string
+        type: array
+      purl:
+        type: string
+      metadataType:
+        type: string
+      metadata:
+        type: object
+    additionalProperties: false
+    type: object
+
+  ImportSchema:
+    required:
+      - version
+      - url
+    properties:
+      version:
+        type: string
+      url:
+        type: string
+    additionalProperties: false
+    type: object
+  ImportSource:
+    required:
+      - type
+      - target
+    properties:
+      type:
+        type: string
+      target:
+        additionalProperties: true
+    additionalProperties: false
+    type: object
+

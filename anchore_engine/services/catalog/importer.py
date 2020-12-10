@@ -347,7 +347,7 @@ def import_image(
 
     # Set the manifest to the import manifest. This is swapped out for the real manifest during the import operation on
     # the analyzer
-    manifest = json.dumps(internal_import_manifest.to_json())
+    manifest = internal_import_manifest.to_json()
 
     parent_manifest = ""
 

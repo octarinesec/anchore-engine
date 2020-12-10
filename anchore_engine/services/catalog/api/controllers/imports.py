@@ -288,7 +288,7 @@ def list_import_parent_manifest(operation_id: str):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def import_image_config(operation_id):
+def import_image_config(operation_id, contents=None):
     """
     POST /imports/images/{operation_id}/image_config
 

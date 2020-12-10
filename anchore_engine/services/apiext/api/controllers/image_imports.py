@@ -241,7 +241,7 @@ def list_import_image_configs(operation_id):
 
 
 @authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
-def import_image_packages(operation_id):
+def import_image_packages(operation_id, contents=None):
     """
     POST /imports/images/{operation_id}/packages
 
@@ -254,7 +254,7 @@ def import_image_packages(operation_id):
 
 
 @authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
-def import_image_dockerfile(operation_id):
+def import_image_dockerfile(operation_id, contents=None):
     """
     POST /imports/images/{operation_id}/dockerfile
 
@@ -267,7 +267,7 @@ def import_image_dockerfile(operation_id):
 
 
 @authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
-def import_image_manifest(operation_id):
+def import_image_manifest(operation_id, contents=None):
     """
     POST /imports/images/{operation_id}/manifest
 
@@ -279,7 +279,7 @@ def import_image_manifest(operation_id):
 
 
 @authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
-def import_image_parent_manifest(operation_id):
+def import_image_parent_manifest(operation_id, contents=None):
     """
     POST /imports/images/{operation_id}/parent_manifest
 
@@ -291,7 +291,7 @@ def import_image_parent_manifest(operation_id):
 
 
 @authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
-def import_image_config(operation_id):
+def import_image_config(operation_id, contents=None):
     """
     POST /imports/images/{operation_id}/image_config
 

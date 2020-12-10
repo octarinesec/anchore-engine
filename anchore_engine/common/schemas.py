@@ -7,13 +7,14 @@ import datetime
 import marshmallow
 from marshmallow import Schema, post_load, fields
 from anchore_engine.utils import datetime_to_rfc3339, rfc3339str_to_datetime
+
 # For other modules to import from this one instead of having to know/use marshmallow directly
 ValidationError = marshmallow.ValidationError
 
 # Add the rfc3339 format handlers
-fields.DateTime.SERIALIZATION_FUNCS['rfc3339'] = datetime_to_rfc3339
-fields.DateTime.DESERIALIZATION_FUNCS['rfc3339'] = rfc3339str_to_datetime
-fields.DateTime.DEFAULT_FORMAT = 'rfc3339'
+fields.DateTime.SERIALIZATION_FUNCS["rfc3339"] = datetime_to_rfc3339
+fields.DateTime.DESERIALIZATION_FUNCS["rfc3339"] = rfc3339str_to_datetime
+fields.DateTime.DEFAULT_FORMAT = "rfc3339"
 
 
 # TODO: This is not enforced in the interface yet, but should be the input and return type for queue operations in this API
@@ -95,13 +96,14 @@ class QueueMessage(JsonSerializable):
             }
 
         """
-        account = fields.String(data_key='userId')
+
+        account = fields.String(data_key="userId")
         created_at = fields.Int(required=True)  # Epoch timestamp
         last_updated = fields.Int(required=True)  # Epoch timestamp
-        queue_id = fields.Int(required=True, data_key='queueId')
-        queue_name = fields.String(required=True, data_key='queueName')
+        queue_id = fields.Int(required=True, data_key="queueId")
+        queue_name = fields.String(required=True, data_key="queueName")
         data = fields.Dict(required=True)
-        data_id = fields.String(data_key='dataId', required=True)
+        data_id = fields.String(data_key="dataId", required=True)
         receipt_handle = fields.String(allow_none=True)
         record_state_key = fields.String(allow_none=True)
         record_state_val = fields.String(allow_none=True)
@@ -110,15 +112,35 @@ class QueueMessage(JsonSerializable):
         popped = fields.Bool(allow_none=True)
         priority = fields.Bool(allow_none=True)
         visible_at = fields.Int(allow_none=True)
-        version = fields.String(default='1', missing='1', allow_none=True) # New version field to support future message schema updates
+        version = fields.String(
+            default="1", missing="1", allow_none=True
+        )  # New version field to support future message schema updates
 
         @post_load
         def make(self, data, **kwargs):
             return QueueMessage(**data)
 
-    __schema__ = QueueMessageV1Schema(unknown='EXCLUDE')
+    __schema__ = QueueMessageV1Schema(unknown="EXCLUDE")
 
-    def __init__(self, account=None, queue_id=None, queue_name=None, data=None, data_id=None, receipt_handle=None, record_state_key=None, record_state_val=None, tries=None, max_tries=None, popped=None, visible_at=None, priority=None, created_at=None, last_updated=None, version=None):
+    def __init__(
+        self,
+        account=None,
+        queue_id=None,
+        queue_name=None,
+        data=None,
+        data_id=None,
+        receipt_handle=None,
+        record_state_key=None,
+        record_state_val=None,
+        tries=None,
+        max_tries=None,
+        popped=None,
+        visible_at=None,
+        priority=None,
+        created_at=None,
+        last_updated=None,
+        version=None,
+    ):
         self.account = account
         self.queue_id = queue_id
         self.queue_name = queue_name
@@ -153,11 +175,12 @@ class AnalysisQueueMessage(JsonSerializable):
         }
 
         """
-        account = fields.String(data_key='userId')
-        image_digest = fields.String(data_key='imageDigest')
-        manifest = fields.String()
+
+        account = fields.String(data_key="userId")
+        image_digest = fields.String(data_key="imageDigest")
+        manifest = fields.String(required=True)
         parent_manifest = fields.String()
-        type = fields.String(default='analysis')
+        type = fields.String(default="analysis")
 
         @post_load
         def make(self, data, **kwargs):
@@ -165,7 +188,9 @@ class AnalysisQueueMessage(JsonSerializable):
 
     __schema__ = AnalysisQueueMessageV1Schema()
 
-    def __init__(self, account=None, image_digest=None, manifest=None, parent_manifest=None):
+    def __init__(
+        self, account=None, image_digest=None, manifest=None, parent_manifest=None
+    ):
         self.account = account
         self.image_digest = image_digest
         self.manifest = manifest
@@ -176,7 +201,9 @@ class ImageLayerMetadata(JsonSerializable):
     class ImageLayerMetadataV1Schema(Schema):
         digest = fields.String()
         size = fields.Int()
-        location = fields.String(allow_none=True) # To allow capturing foreign url references
+        location = fields.String(
+            allow_none=True
+        )  # To allow capturing foreign url references
 
         @post_load
         def make(self, data, **kwarg):
@@ -199,7 +226,7 @@ class ImagePlatform(JsonSerializable):
         def make(self, data, **kwargs):
             return ImagePlatform(**data)
 
-    __schema__ = ImagePlatformV1Schema(unknown='EXCLUDE')
+    __schema__ = ImagePlatformV1Schema(unknown="EXCLUDE")
 
     def __init__(self, os=None, architecture=None):
         self.os = os
@@ -214,8 +241,12 @@ class ImageMetadata(JsonSerializable):
     For example, this data is from things like `docker inspect` or `podman inspect`
 
     """
+
     class ImageMetadataV1Schema(Schema):
-        layers = fields.List(fields.Nested(ImageLayerMetadata.ImageLayerMetadataV1Schema), allow_none=True)
+        layers = fields.List(
+            fields.Nested(ImageLayerMetadata.ImageLayerMetadataV1Schema),
+            allow_none=True,
+        )
         size = fields.Int(allow_none=True)
         platform = fields.Nested(ImagePlatform.ImagePlatformV1Schema, allow_none=True)
         created_at = fields.DateTime(allow_none=True)
@@ -233,11 +264,36 @@ class ImageMetadata(JsonSerializable):
         self.created_at = created_at
 
 
+class ImportContentReference(JsonSerializable):
+    """
+    An import content reference for the internal object store. This is primarily used for internal messaging
+    """
+
+    class ImportContentReferenceV1Schema(Schema):
+        content_type = fields.String(required=True)
+        digest = fields.String(required=True)
+        bucket = fields.String(required=True)
+        key = fields.String(required=True)
+
+        @post_load
+        def make(self, data, **kwargs):
+            return ImportContentReference(**data)
+
+    __schema__ = ImportContentReferenceV1Schema()
+
+    def __init__(self, content_type=None, digest=None, bucket=None, key=None):
+        self.content_type = content_type
+        self.digest = digest
+        self.bucket = bucket
+        self.key = key
+
+
 class ContentTypeDigests(JsonSerializable):
     class ContentTypeDigestsV1Schema(Schema):
         packages = fields.String(required=True)
+        image_config = fields.String(required=True)
+        manifest = fields.String(required=True)
         dockerfile = fields.String(allow_none=True)
-        manifest = fields.String(allow_none=True)
         parent_manifest = fields.String(allow_none=True)
 
         @post_load
@@ -246,20 +302,32 @@ class ContentTypeDigests(JsonSerializable):
 
     __schema__ = ContentTypeDigestsV1Schema()
 
-    def __init__(self, packages=None, dockerfile=None, manifest=None, parent_manifest=None):
+    def __init__(
+        self,
+        packages=None,
+        image_config=None,
+        dockerfile=None,
+        manifest=None,
+        parent_manifest=None,
+    ):
         self.packages = packages
         self.dockerfile = dockerfile
         self.manifest = manifest
         self.parent_manifest = parent_manifest
+        self.image_config = image_config
 
 
 class ImportManifest(JsonSerializable):
     class ImportManifestV1Schema(Schema):
-        metadata = fields.Nested(ImageMetadata.ImageMetadataV1Schema, allow_none=True, required=False)
+        metadata = fields.Nested(
+            ImageMetadata.ImageMetadataV1Schema, allow_none=True, required=False
+        )
         tags = fields.List(fields.String(), allow_none=True)
         contents = fields.Nested(ContentTypeDigests.ContentTypeDigestsV1Schema)
         digest = fields.String(required=True)
-        parent_digest = fields.String(allow_none=True) # The digest of the manifest-list parent object if this was a pulled image in a multi-arch tag and that data is available
+        parent_digest = fields.String(
+            allow_none=True
+        )  # The digest of the manifest-list parent object if this was a pulled image in a multi-arch tag and that data is available
         local_image_id = fields.String(allow_none=True)
         operation_uuid = fields.String(required=True)
 
@@ -269,8 +337,58 @@ class ImportManifest(JsonSerializable):
 
     __schema__ = ImportManifestV1Schema()
 
-    def __init__(self, digest=None, parent_digest=None, local_image_id=None, metadata=None, tags=None, contents=None, operation_uuid=None):
+    def __init__(
+        self,
+        digest=None,
+        parent_digest=None,
+        local_image_id=None,
+        metadata=None,
+        tags=None,
+        contents=None,
+        operation_uuid=None,
+    ):
         self.metadata = metadata
+        self.tags = tags
+        self.contents = contents
+        self.digest = digest
+        self.local_image_id = local_image_id
+        self.parent_digest = parent_digest
+        self.operation_uuid = operation_uuid
+
+
+class InternalImportManifest(JsonSerializable):
+    """
+    The materialized internal manifest for an import. Differs from the external ImportManifest in that it carries information
+    between services such as the object storage location of the content to avoid re-computing it in each service.
+    """
+
+    class InternalImportManifestV1Schema(Schema):
+        tags = fields.List(fields.String(), allow_none=True)
+        contents = fields.List(
+            fields.Nested(ImportContentReference.ImportContentReferenceV1Schema)
+        )
+        digest = fields.String(required=True)
+        parent_digest = fields.String(
+            allow_none=True
+        )  # The digest of the manifest-list parent object if this was a pulled image in a multi-arch tag and that data is available
+        local_image_id = fields.String(allow_none=True)
+        operation_uuid = fields.String(required=True)
+
+        @post_load
+        def make(self, data, **kwargs):
+            return InternalImportManifest(**data)
+
+    __schema__ = InternalImportManifestV1Schema()
+
+    def __init__(
+        self,
+        digest=None,
+        parent_digest=None,
+        local_image_id=None,
+        tags=None,
+        contents=None,
+        operation_uuid=None,
+    ):
         self.tags = tags
         self.contents = contents
         self.digest = digest
@@ -284,12 +402,15 @@ class ImportQueueMessage(JsonSerializable):
     This message has the same keys as the Analysis message due to implementation details in the queue rebalancer/handler in the catalog.
     That should be fixed and then allow this to be a more bespoke message format
     """
+
     class ImportQueueMessageV1Schema(Schema):
-        account = fields.String(data_key='userId')
-        image_digest = fields.String(data_key='imageDigest')
-        manifest = fields.Nested(ImportManifest.ImportManifestV1Schema, allow_none=True)
+        account = fields.String(data_key="userId")
+        image_digest = fields.String(data_key="imageDigest")
+        manifest = fields.Nested(
+            InternalImportManifest.InternalImportManifestV1Schema, allow_none=True
+        )
         parent_manifest = fields.String(allow_none=True)
-        type = fields.String(default='analysis', allow_none=True)
+        type = fields.String(default="analysis", allow_none=True)
 
         @post_load
         def make(self, data, **kwargs):
@@ -297,7 +418,14 @@ class ImportQueueMessage(JsonSerializable):
 
     __schema__ = ImportQueueMessageV1Schema()
 
-    def __init__(self, account=None, image_digest=None, manifest=None, parent_manifest=None, type=None):
+    def __init__(
+        self,
+        account=None,
+        image_digest=None,
+        manifest=None,
+        parent_manifest=None,
+        type=None,
+    ):
         self.account = account
         self.image_digest = image_digest
         self.manifest = manifest
@@ -359,14 +487,22 @@ class GroupDownloadOperationConfiguration(JsonSerializable):
     class GroupDownloadOperationV1Schema(Schema):
         feed = fields.Str()
         group = fields.Str()
-        parameters = fields.Nested(GroupDownloadOperationParams.GroupDownloadOperationParamsV1Schema)
+        parameters = fields.Nested(
+            GroupDownloadOperationParams.GroupDownloadOperationParamsV1Schema
+        )
 
         @post_load
         def make(self, data, **kwargs):
             return GroupDownloadOperationConfiguration(**data)
+
     __schema__ = GroupDownloadOperationV1Schema()
 
-    def __init__(self, feed: str = None, group: str = None, parameters: GroupDownloadOperationParams = None):
+    def __init__(
+        self,
+        feed: str = None,
+        group: str = None,
+        parameters: GroupDownloadOperationParams = None,
+    ):
         self.feed = feed
         self.group = group
         self.parameters = parameters
@@ -378,7 +514,11 @@ class DownloadOperationConfiguration(JsonSerializable):
     """
 
     class DownloadOperationV1Schema(Schema):
-        groups = fields.List(fields.Nested(GroupDownloadOperationConfiguration.GroupDownloadOperationV1Schema))
+        groups = fields.List(
+            fields.Nested(
+                GroupDownloadOperationConfiguration.GroupDownloadOperationV1Schema
+            )
+        )
         source_uri = fields.Str()
         uuid = fields.UUID()
 
@@ -409,7 +549,15 @@ class GroupDownloadResult(JsonSerializable):
 
     __schema__ = GroupDownloadResultV1Schema()
 
-    def __init__(self, started: datetime = None, ended: datetime = None, feed: str = None, group: str = None, status: str = None, total_records: int = None):
+    def __init__(
+        self,
+        started: datetime = None,
+        ended: datetime = None,
+        feed: str = None,
+        group: str = None,
+        status: str = None,
+        total_records: int = None,
+    ):
         self.started = started
         self.ended = ended
         self.status = status
@@ -423,7 +571,9 @@ class DownloadOperationResult(JsonSerializable):
         started = fields.DateTime(allow_none=True)
         ended = fields.DateTime(allow_none=True)
         status = fields.Str(allow_none=True)
-        results = fields.List(fields.Nested(GroupDownloadResult.GroupDownloadResultV1Schema))
+        results = fields.List(
+            fields.Nested(GroupDownloadResult.GroupDownloadResultV1Schema)
+        )
 
         @post_load
         def make(self, data, **kwargs):
@@ -431,7 +581,13 @@ class DownloadOperationResult(JsonSerializable):
 
     __schema__ = DownloadOperationResultV1Schema()
 
-    def __init__(self, started: datetime = None, ended: datetime = None, status: str = None, results: list = None):
+    def __init__(
+        self,
+        started: datetime = None,
+        ended: datetime = None,
+        status: str = None,
+        results: list = None,
+    ):
         """
         Make sure these are UTC dates
 
@@ -448,8 +604,12 @@ class DownloadOperationResult(JsonSerializable):
 
 class LocalFeedDataRepoMetadata(JsonSerializable):
     class LocalFeedDataRepoMetadataV1Schema(Schema):
-        download_configuration = fields.Nested(DownloadOperationConfiguration.DownloadOperationV1Schema, allow_none=True)
-        download_result = fields.Nested(DownloadOperationResult.DownloadOperationResultV1Schema, allow_none=True)
+        download_configuration = fields.Nested(
+            DownloadOperationConfiguration.DownloadOperationV1Schema, allow_none=True
+        )
+        download_result = fields.Nested(
+            DownloadOperationResult.DownloadOperationResultV1Schema, allow_none=True
+        )
         data_write_dir = fields.Str()
 
         @post_load
@@ -458,7 +618,12 @@ class LocalFeedDataRepoMetadata(JsonSerializable):
 
     __schema__ = LocalFeedDataRepoMetadataV1Schema()
 
-    def __init__(self, download_configuration: DownloadOperationConfiguration = None, download_result: DownloadOperationResult = None, data_write_dir: str = None):
+    def __init__(
+        self,
+        download_configuration: DownloadOperationConfiguration = None,
+        download_result: DownloadOperationResult = None,
+        data_write_dir: str = None,
+    ):
         self.download_configuration = download_configuration
         self.download_result = download_result
         self.data_write_dir = data_write_dir

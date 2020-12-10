@@ -474,8 +474,11 @@ def store_analysis_results(
 
     :param account:
     :param image_digest:
-    :param image_data:
+    :param image_record:
+    :param analysis_result:
+    :param image_manifest:
     :param analysis_events: list of events that any new events may be added to
+    :param image_content_types:
     :return:
     """
 

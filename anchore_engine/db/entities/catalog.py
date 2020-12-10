@@ -5,15 +5,35 @@ Entities for the catalog service including services, users, images, etc. Pretty 
 import datetime
 import enum
 import uuid
-from sqlalchemy import Column, Integer, String, Boolean, BigInteger, DateTime, LargeBinary, Index, JSON, Enum, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Boolean,
+    BigInteger,
+    DateTime,
+    LargeBinary,
+    Index,
+    JSON,
+    Enum,
+    ForeignKey,
+)
 from sqlalchemy import inspect
 from sqlalchemy.orm import relationship
 
-from .common import Base, anchore_now, anchore_uuid, UtilMixin, StringJSON, anchore_now_datetime
+from .common import (
+    Base,
+    anchore_now,
+    anchore_uuid,
+    UtilMixin,
+    StringJSON,
+    anchore_now_datetime,
+)
+from anchore_engine.utils import datetime_to_rfc3339
 
 
 class Anchore(Base, UtilMixin):
-    __tablename__ = 'anchore'
+    __tablename__ = "anchore"
 
     service_version = Column(String, primary_key=True)
     db_version = Column(String, primary_key=True)
@@ -26,11 +46,14 @@ class Anchore(Base, UtilMixin):
 
     def __repr__(self):
         return "service_version='%s' db_version='%s' scanner_version='%s'" % (
-        self.service_version, self.db_version, self.scanner_version)
+            self.service_version,
+            self.db_version,
+            self.scanner_version,
+        )
 
 
 class ObjectStorageMetadata(Base, UtilMixin):
-    __tablename__ = 'archive_metadata'
+    __tablename__ = "archive_metadata"
 
     bucket = Column(String, primary_key=True)
     archiveId = Column(String, primary_key=True)
@@ -48,7 +71,7 @@ class ObjectStorageMetadata(Base, UtilMixin):
 
 
 class LegacyArchiveDocument(Base, UtilMixin):
-    __tablename__ = 'archive_document'
+    __tablename__ = "archive_document"
 
     bucket = Column(String, primary_key=True)
     archiveId = Column(String, primary_key=True)
@@ -69,12 +92,13 @@ class ObjectStorageRecord(Base, UtilMixin):
     """
     Content storage for the db driver for object storage.
     """
-    __tablename__ = 'object_storage'
+
+    __tablename__ = "object_storage"
 
     userId = Column(String, primary_key=True)
     bucket = Column(String, primary_key=True)
     key = Column(String, primary_key=True)
-    version = Column(String, primary_key=True, default='')
+    version = Column(String, primary_key=True, default="")
     object_metadata = Column(String)
     content = Column(LargeBinary)
     created_at = Column(Integer, default=anchore_now)
@@ -87,7 +111,8 @@ class User(Base, UtilMixin):
     Legacy user definition. Migrated to Account + UserCredential
 
     """
-    __tablename__ = 'users'
+
+    __tablename__ = "users"
 
     userId = Column(String, primary_key=True)
     created_at = Column(Integer, default=anchore_now)
@@ -104,7 +129,7 @@ class User(Base, UtilMixin):
 
 
 class Event(Base, UtilMixin):
-    __tablename__ = 'events'
+    __tablename__ = "events"
 
     generated_uuid = Column(String, primary_key=True, default=anchore_uuid)
     created_at = Column(DateTime, default=anchore_now_datetime)
@@ -121,17 +146,23 @@ class Event(Base, UtilMixin):
     details = Column(StringJSON)
     timestamp = Column(DateTime)
 
-    __table_args__ = (Index('ix_timestamp', timestamp.desc()),
-                      Index('ix_resource_user_id', resource_user_id),
-                      Index('ix_resource_type', resource_type),
-                      Index('ix_resource_id', resource_id),
-                      Index('ix_source_servicename', source_servicename),
-                      Index('ix_source_hostid', source_hostid),
-                      Index('ix_level', level),
-                      Index('ix_type', type))
+    __table_args__ = (
+        Index("ix_timestamp", timestamp.desc()),
+        Index("ix_resource_user_id", resource_user_id),
+        Index("ix_resource_type", resource_type),
+        Index("ix_resource_id", resource_id),
+        Index("ix_source_servicename", source_servicename),
+        Index("ix_source_hostid", source_hostid),
+        Index("ix_level", level),
+        Index("ix_type", type),
+    )
 
     def __repr__(self):
-        return "generated_uuid='%s' level='%s' message='%s'" % (self.generated_uuid, self.level, self.message)
+        return "generated_uuid='%s' level='%s' message='%s'" % (
+            self.generated_uuid,
+            self.level,
+            self.message,
+        )
 
 
 class QueueItem(Base, UtilMixin):
@@ -139,7 +170,8 @@ class QueueItem(Base, UtilMixin):
     Queue data used by notification system for queueing up notifications for delivery.
 
     """
-    __tablename__ = 'queues'
+
+    __tablename__ = "queues"
 
     queueId = Column(String, primary_key=True)
     userId = Column(String, primary_key=True)
@@ -160,7 +192,8 @@ class QueueMeta(Base, UtilMixin):
     """
     Metadata for queues themselves. msgs are stored in the queue table for simplequeue service.
     """
-    __tablename__ = 'queuemeta'
+
+    __tablename__ = "queuemeta"
 
     queueName = Column(String, primary_key=True)
     userId = Column(String, primary_key=True)
@@ -184,7 +217,8 @@ class Queue(Base, UtilMixin):
     """
     Queue data used by the simplequeue service.
     """
-    __tablename__ = 'queue'
+
+    __tablename__ = "queue"
 
     queueId = Column(BigInteger, primary_key=True, autoincrement=True)
     userId = Column(String, primary_key=True)
@@ -195,7 +229,7 @@ class Queue(Base, UtilMixin):
     record_state_val = Column(String)
     popped = Column(Boolean, default=False)
     priority = Column(Boolean, default=False)
-    data = Column(String, default='{}')
+    data = Column(String, default="{}")
     dataId = Column(String)
     tries = Column(Integer, default=0)
     max_tries = Column(Integer, default=0)
@@ -209,7 +243,7 @@ class Queue(Base, UtilMixin):
 
 
 class Subscription(Base, UtilMixin):
-    __tablename__ = 'subscriptions'
+    __tablename__ = "subscriptions"
 
     subscription_id = Column(String, primary_key=True)
     userId = Column(String, primary_key=True)
@@ -231,7 +265,11 @@ class Subscription(Base, UtilMixin):
 
     def __repr__(self):
         return "userId='%s' subscription_type='%s' subscription_key='%s'" % (
-        self.userId, self.subscription_type, self.subscription_key)
+            self.userId,
+            self.subscription_type,
+            self.subscription_key,
+        )
+
 
 # if False:
 #     class CatalogRepoTag(Base, UtilMixin):
@@ -273,7 +311,7 @@ class CatalogImage(Base, UtilMixin):
     record_state_val = Column(String)
 
     image_type = Column(String)
-    
+
     # image metadata
     arch = Column(String)
     distro = Column(String)
@@ -325,7 +363,14 @@ class CatalogImageDocker(Base, UtilMixin):
         return ret
 
     def __repr__(self):
-        return '<{} {}/{}:{},digest={},detected_at={}>'.format(super().__repr__(), self.registry, self.repo, self.tag, self.imageDigest, self.tag_detected_at)
+        return "<{} {}/{}:{},digest={},detected_at={}>".format(
+            super().__repr__(),
+            self.registry,
+            self.repo,
+            self.tag,
+            self.imageDigest,
+            self.tag_detected_at,
+        )
 
 
 class ArchivedImage(Base, UtilMixin):
@@ -333,13 +378,18 @@ class ArchivedImage(Base, UtilMixin):
     Archive equivalent of CatalogImage, shortened for efficiency and to help manage lifecycle
 
     """
+
     __tablename__ = "catalog_archived_images"
 
     account = Column(String, primary_key=True)
     imageDigest = Column(String, primary_key=True)
     parentDigest = Column(String)
-    image_record_created_at = Column(Integer)  # The created_at from the original image record
-    image_record_last_updated = Column(Integer)  # The last_updated from the original image record
+    image_record_created_at = Column(
+        Integer
+    )  # The created_at from the original image record
+    image_record_last_updated = Column(
+        Integer
+    )  # The last_updated from the original image record
     analyzed_at = Column(Integer)
     status = Column(String)
 
@@ -358,37 +408,45 @@ class ArchivedImage(Base, UtilMixin):
     record_state_key = Column(String, default="active")
     record_state_val = Column(String)
 
-    _tags = relationship("ArchivedImageDocker", primaryjoin="and_(ArchivedImage.account == foreign(ArchivedImageDocker.account), ArchivedImage.imageDigest == foreign(ArchivedImageDocker.imageDigest))", lazy='joined', back_populates='_image', cascade='all, delete-orphan')
+    _tags = relationship(
+        "ArchivedImageDocker",
+        primaryjoin="and_(ArchivedImage.account == foreign(ArchivedImageDocker.account), ArchivedImage.imageDigest == foreign(ArchivedImageDocker.imageDigest))",
+        lazy="joined",
+        back_populates="_image",
+        cascade="all, delete-orphan",
+    )
 
     def tags(self):
         return self._tags
 
     def __repr__(self):
-        return "<{} account={},imageDigest={}>".format(super().__repr__(), self.account, self.imageDigest)
+        return "<{} account={},imageDigest={}>".format(
+            super().__repr__(), self.account, self.imageDigest
+        )
 
     @classmethod
     def from_catalog_image(cls, catalog_img_dict, cascade=True):
         i = ArchivedImage()
-        i.account = catalog_img_dict['userId']
-        i.imageDigest = catalog_img_dict['imageDigest']
-        i.analyzed_at = catalog_img_dict['analyzed_at']
-        i.parentDigest = catalog_img_dict['parentDigest']
-        i.annotations = catalog_img_dict['annotations']
-        i.image_record_created_at = catalog_img_dict['created_at']
-        i.image_record_last_updated = catalog_img_dict['last_updated']
-        i.status = 'archiving'
+        i.account = catalog_img_dict["userId"]
+        i.imageDigest = catalog_img_dict["imageDigest"]
+        i.analyzed_at = catalog_img_dict["analyzed_at"]
+        i.parentDigest = catalog_img_dict["parentDigest"]
+        i.annotations = catalog_img_dict["annotations"]
+        i.image_record_created_at = catalog_img_dict["created_at"]
+        i.image_record_last_updated = catalog_img_dict["last_updated"]
+        i.status = "archiving"
 
         details = []
         if cascade:
-            for detail in catalog_img_dict['image_detail']:
+            for detail in catalog_img_dict["image_detail"]:
                 d = ArchivedImageDocker()
                 d.imageDigest = i.imageDigest
                 d.account = i.account
-                d.tag = detail['tag']
-                d.repository = detail['repo']
-                d.registry = detail['registry']
-                d.tag_detected_at = detail['tag_detected_at']
-                d.imageId = detail['imageId']
+                d.tag = detail["tag"]
+                d.repository = detail["repo"]
+                d.registry = detail["registry"]
+                d.tag_detected_at = detail["tag_detected_at"]
+                d.imageId = detail["imageId"]
                 details.append(d)
             i._tags = details
         return i
@@ -399,6 +457,7 @@ class ArchivedImageDocker(Base, UtilMixin):
     Archived equivalent of a catalog_image_docker, but with some data removed to keep the records small since most metadata is in the archive objects themselves.
 
     """
+
     __tablename__ = "catalog_archived_images_docker"
 
     account = Column(String, primary_key=True)
@@ -414,7 +473,12 @@ class ArchivedImageDocker(Base, UtilMixin):
     record_state_key = Column(String, default="active")
     record_state_val = Column(String)
 
-    _image = relationship("ArchivedImage", primaryjoin="and_(foreign(ArchivedImageDocker.account) == ArchivedImage.account, foreign(ArchivedImageDocker.imageDigest) == ArchivedImage.imageDigest)", lazy='joined', back_populates='_tags')
+    _image = relationship(
+        "ArchivedImage",
+        primaryjoin="and_(foreign(ArchivedImageDocker.account) == ArchivedImage.account, foreign(ArchivedImageDocker.imageDigest) == ArchivedImage.imageDigest)",
+        lazy="joined",
+        back_populates="_tags",
+    )
 
     @property
     def repo(self):
@@ -432,13 +496,13 @@ class ArchivedImageDocker(Base, UtilMixin):
 
 
 class ArchiveTransitions(enum.Enum):
-    archive = 'archive'
-    delete = 'delete'
+    archive = "archive"
+    delete = "delete"
 
 
 class TransitionHistoryState(enum.Enum):
-    pending = 'pending'
-    complete = 'complete'
+    pending = "pending"
+    complete = "complete"
 
 
 class ArchiveTransitionRule(Base, UtilMixin):
@@ -446,7 +510,7 @@ class ArchiveTransitionRule(Base, UtilMixin):
 
     account = Column(String, primary_key=True)
     rule_id = Column(String, primary_key=True)
-    transition = Column(Enum(ArchiveTransitions, name='archive_transitions'))
+    transition = Column(Enum(ArchiveTransitions, name="archive_transitions"))
     selector_registry = Column(String)
     selector_repository = Column(String)
     selector_tag = Column(String)
@@ -457,7 +521,9 @@ class ArchiveTransitionRule(Base, UtilMixin):
     last_updated = Column(Integer, onupdate=anchore_now, default=anchore_now)
 
     def __repr__(self):
-        return '<ArchiveTransitionRule account={},rule_id={}>'.format(self.account, self.rule_id)
+        return "<ArchiveTransitionRule account={},rule_id={}>".format(
+            self.account, self.rule_id
+        )
 
 
 class ArchiveTransitionHistoryEntry(Base, UtilMixin):
@@ -471,12 +537,16 @@ class ArchiveTransitionHistoryEntry(Base, UtilMixin):
     account = Column(String, primary_key=True)
     rule_id = Column(String, primary_key=True)
     image_digest = Column(String, primary_key=True)
-    transition = Column(Enum(ArchiveTransitions, name='archive_transitions'), primary_key=True)
-    transition_state = Column(Enum(TransitionHistoryState, name='archive_transition_history_state'))
+    transition = Column(
+        Enum(ArchiveTransitions, name="archive_transitions"), primary_key=True
+    )
+    transition_state = Column(
+        Enum(TransitionHistoryState, name="archive_transition_history_state")
+    )
     created_at = Column(Integer, default=anchore_now)
     last_updated = Column(Integer, onupdate=anchore_now, default=anchore_now)
 
-    #_matches = relationship("TransitionRuleMatch", primaryjoin="and_(ArchiveTransitionHistoryEntry.rule_id == foreign(TransitionRuleMatch.rule_id), ArchiveTransitionHistoryEntry.task_id == foreign(TransitionMatch.task_id))", lazy='joined', back_populates='_image', cascade='all, delete-orphan')
+    # _matches = relationship("TransitionRuleMatch", primaryjoin="and_(ArchiveTransitionHistoryEntry.rule_id == foreign(TransitionRuleMatch.rule_id), ArchiveTransitionHistoryEntry.task_id == foreign(TransitionMatch.task_id))", lazy='joined', back_populates='_image', cascade='all, delete-orphan')
 
 
 # class TransitionRuleMatch(Base, UtilMixin):
@@ -489,8 +559,9 @@ class ArchiveTransitionHistoryEntry(Base, UtilMixin):
 #     created_at = Column(Integer, default=anchore_now)
 #
 
+
 class PolicyBundle(Base, UtilMixin):
-    __tablename__ = 'policy_bundle'
+    __tablename__ = "policy_bundle"
 
     policyId = Column(String, primary_key=True)
     userId = Column(String, primary_key=True)
@@ -508,7 +579,7 @@ class PolicyBundle(Base, UtilMixin):
 
 
 class PolicyEval(Base, UtilMixin):
-    __tablename__ = 'policy_eval'
+    __tablename__ = "policy_eval"
 
     userId = Column(String, primary_key=True)
     imageDigest = Column(String, primary_key=True)
@@ -531,9 +602,15 @@ class PolicyEval(Base, UtilMixin):
         return ret
 
     def content_compare(self, other):
-        selfdata = dict((key, value) for key, value in vars(self).items() if not key.startswith('_'))
-        otherdata = dict((key, value) for key, value in vars(other).items() if not key.startswith('_'))
-        for k in ['userId', 'imageDigest', 'tag', 'policyId', 'final_action']:
+        selfdata = dict(
+            (key, value) for key, value in vars(self).items() if not key.startswith("_")
+        )
+        otherdata = dict(
+            (key, value)
+            for key, value in vars(other).items()
+            if not key.startswith("_")
+        )
+        for k in ["userId", "imageDigest", "tag", "policyId", "final_action"]:
             try:
                 if selfdata[k] != otherdata[k]:
                     return False
@@ -543,11 +620,15 @@ class PolicyEval(Base, UtilMixin):
 
     def __repr__(self):
         return "policyId='%s' userId='%s' imageDigest='%s' tag='%s'" % (
-        self.policyId, self.userId, self.imageDigest, self.tag)
+            self.policyId,
+            self.userId,
+            self.imageDigest,
+            self.tag,
+        )
 
 
 class Service(Base, UtilMixin):
-    __tablename__ = 'services'
+    __tablename__ = "services"
 
     hostid = Column(String, primary_key=True)
     servicename = Column(String, primary_key=True)
@@ -576,7 +657,7 @@ class Service(Base, UtilMixin):
 
 
 class Registry(Base, UtilMixin):
-    __tablename__ = 'registries'
+    __tablename__ = "registries"
 
     registry = Column(String, primary_key=True)
     userId = Column(String, primary_key=True)
@@ -593,12 +674,16 @@ class Registry(Base, UtilMixin):
     registry_meta = Column(String)
 
     def __repr__(self):
-        return "registry='%s' userId='%s' registry_user='%s'" % (self.registry, self.userId, self.registry_user)
+        return "registry='%s' userId='%s' registry_user='%s'" % (
+            self.registry,
+            self.userId,
+            self.registry_user,
+        )
 
 
 # Application-defined lease using a flag in a db row. These are leases, not locks, because they have expirations.
 class Lease(Base, UtilMixin):
-    __tablename__ = 'leases'
+    __tablename__ = "leases"
 
     _default_expiration_duration = 10
 
@@ -609,7 +694,9 @@ class Lease(Base, UtilMixin):
 
     # Some convenience functions, these should be executed inside for_update locks
     def do_acquire(self, holder_id, duration_sec=None):
-        return self.is_available() and self.set_holder(holder_id, duration_sec=duration_sec)
+        return self.is_available() and self.set_holder(
+            holder_id, duration_sec=duration_sec
+        )
 
     def is_available(self):
         return self.held_by is None or self.is_expired()
@@ -622,7 +709,9 @@ class Lease(Base, UtilMixin):
             duration_sec = self._default_expiration_duration
 
         self.held_by = id
-        self.expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=duration_sec)
+        self.expires_at = datetime.datetime.utcnow() + datetime.timedelta(
+            seconds=duration_sec
+        )
         self.epoch += 1
         return True
 
@@ -633,17 +722,23 @@ class Lease(Base, UtilMixin):
         return True
 
     def __str__(self):
-        return '<{} id={},held_by={},expires_at={},epoch={}>'.format(self.__class__.__name__, self.id, self.held_by, self.expires_at.isoformat() if self.expires_at else self.expires_at, self.epoch)
+        return "<{} id={},held_by={},expires_at={},epoch={}>".format(
+            self.__class__.__name__,
+            self.id,
+            self.held_by,
+            self.expires_at.isoformat() if self.expires_at else self.expires_at,
+            self.epoch,
+        )
 
 
 # Image import entities
 class ImportState(enum.Enum):
-    pending = 'pending'
-    processing = 'processing'
-    complete = 'complete'
-    failed = 'failed'
-    expired = 'expired'
-    invalidated = 'invalidated'
+    pending = "pending"
+    processing = "processing"
+    complete = "complete"
+    failed = "failed"
+    expired = "expired"
+    invalidated = "invalidated"
 
     def is_active(self):
         """
@@ -654,19 +749,21 @@ class ImportState(enum.Enum):
 
 
 class ImageImportOperation(Base, UtilMixin):
-    __tablename__ = 'image_imports'
+    __tablename__ = "image_imports"
 
     uuid = Column(String, primary_key=True, default=uuid.uuid4)
     account = Column(String, index=True)
     expires_at = Column(DateTime)
     status = Column(Enum(ImportState))
     created_at = Column(DateTime, default=anchore_now_datetime)
-    last_updated = Column(DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime)
-    contents = relationship('ImageImportContent', back_populates='operation')
+    last_updated = Column(
+        DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime
+    )
+    contents = relationship("ImageImportContent", back_populates="operation")
 
     def to_json(self):
         j = super().to_json()
-        j['status'] = self.status.value
+        j["status"] = self.status.value
         return j
 
 
@@ -674,13 +771,16 @@ class ImageImportContent(Base, UtilMixin):
     """
     References to objects in the object store used for
     """
-    __tablename__ = 'image_import_content'
 
-    operation_id = Column(String, ForeignKey('image_imports.uuid'), primary_key=True)
+    __tablename__ = "image_import_content"
+
+    operation_id = Column(String, ForeignKey("image_imports.uuid"), primary_key=True)
     digest = Column(String, primary_key=True)
     content_type = Column(String, primary_key=True)
     created_at = Column(DateTime, default=anchore_now_datetime)
-    last_updated = Column(DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime)
+    last_updated = Column(
+        DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime
+    )
     content_storage_bucket = Column(String)
     content_storage_key = Column(String)
-    operation = relationship('ImageImportOperation', back_populates='contents')
+    operation = relationship("ImageImportOperation", back_populates="contents")

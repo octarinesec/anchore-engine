@@ -14,8 +14,6 @@ from anchore_engine.apis.authorization import (
     RequestingAccountValue,
 )
 
-from anchore_engine.utils import datetime_to_rfc3339, ensure_str, ensure_bytes
-from anchore_engine.common.schemas import ImportManifest
 
 authorizer = get_authorizer()
 
@@ -219,6 +217,30 @@ def list_import_parent_manifests(operation_id):
 
 
 @authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
+def list_import_image_configs(operation_id):
+    """
+    GET /imports/images/{operation_id}/image_config
+
+    :param operation_id:
+    :return:
+    """
+    try:
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.list_import_content(operation_id, "parent_manifest")
+        return resp, 200
+    except api_exceptions.AnchoreApiError as ex:
+        return (
+            make_response_error(ex, in_httpcode=ex.__response_code__),
+            ex.__response_code__,
+        )
+    except Exception as ex:
+        logger.exception("Unexpected error in api processing")
+        return make_response_error(ex, in_httpcode=500), 500
+
+
+@authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
 def import_image_packages(operation_id):
     """
     POST /imports/images/{operation_id}/packages
@@ -266,6 +288,18 @@ def import_image_parent_manifest(operation_id):
     """
 
     return content_upload(operation_id, "parent_manifest", request)
+
+
+@authorizer.requires([ActionBoundPermission(domain=RequestingAccountValue())])
+def import_image_config(operation_id):
+    """
+    POST /imports/images/{operation_id}/image_config
+
+    :param operation_id:
+    :return:
+    """
+
+    return content_upload(operation_id, "image_config", request)
 
 
 def content_upload(operation_id, content_type, request):

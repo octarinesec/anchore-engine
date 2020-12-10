@@ -1,5 +1,4 @@
 import datetime
-from uuid import uuid4
 from hashlib import sha256
 from connexion import request
 
@@ -16,7 +15,6 @@ from anchore_engine.db.entities.catalog import (
     ImportState,
 )
 from anchore_engine.utils import datetime_to_rfc3339, ensure_str, ensure_bytes
-from anchore_engine.common.schemas import ImportManifest
 
 authorizer = get_authorizer()
 
@@ -24,33 +22,6 @@ IMPORT_BUCKET = "image_content_imports"
 
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
 OPERATION_EXPIRATION_DELTA = datetime.timedelta(hours=24)
-supported_content_types = ["packages"]
-
-
-@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def list_import_packages(operation_id: str):
-    """
-    GET /imports/images/{operations_id}/packages
-
-    :param operation_id:
-    :return:
-    """
-    try:
-        with session_scope() as db_session:
-            resp = [
-                x.digest
-                for x in db_session.query(ImageImportContent)
-                .join(ImageImportContent.operation)
-                .filter(
-                    ImageImportOperation.account == ApiRequestContextProxy.namespace(),
-                    ImageImportOperation.uuid == operation_id,
-                )
-                .all()
-            ]
-
-        return resp, 200
-    except Exception as ex:
-        return make_response_error(ex, in_httpcode=500), 500
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
@@ -142,7 +113,11 @@ def invalidate_operation(operation_id):
                 .one_or_none()
             )
             if record:
-                if record.status not in [ImportState.invalidated, ImportState.complete]:
+                if record.status not in [
+                    ImportState.invalidated,
+                    ImportState.complete,
+                    ImportState.processing,
+                ]:
                     record.status = ImportState.invalidated
                     db_session.flush()
 
@@ -183,14 +158,20 @@ def update_operation(operation_id, operation):
                     record.status = ImportState(operation.get("status"))
                     db_session.flush()
                 else:
-                    raise api_exceptions.BadRequest('Cannot update status for import in terminal state', detail={'status': record.status})
+                    raise api_exceptions.BadRequest(
+                        "Cannot update status for import in terminal state",
+                        detail={"status": record.status},
+                    )
                 resp = record.to_json()
             else:
                 raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
 
         return resp, 200
     except api_exceptions.AnchoreApiError as err:
-        return make_response_error(err, in_httpcode=err.__response_code__), err.__response_code__
+        return (
+            make_response_error(err, in_httpcode=err.__response_code__),
+            err.__response_code__,
+        )
     except Exception as ex:
         return make_response_error(ex, in_httpcode=500), 500
 
@@ -217,6 +198,20 @@ def import_image_packages(operation_id):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def list_import_packages(operation_id: str):
+    """
+    GET /imports/images/{operations_id}/packages
+
+    :param operation_id:
+    :return:
+    """
+
+    return list_import_content(
+        operation_id, ApiRequestContextProxy.namespace(), "packages"
+    )
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
 def import_image_dockerfile(operation_id):
     """
     POST /imports/images/{operation_id}/dockerfile
@@ -227,6 +222,19 @@ def import_image_dockerfile(operation_id):
     """
 
     return content_upload(operation_id, "dockerfile", request)
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def list_import_dockerfile(operation_id: str):
+    """
+    GET /imports/images/{operations_id}/dockerfile
+
+    :param operation_id:
+    :return:
+    """
+    return list_import_content(
+        operation_id, ApiRequestContextProxy.namespace(), "dockerfile"
+    )
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
@@ -242,6 +250,19 @@ def import_image_manifest(operation_id):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def list_import_manifest(operation_id: str):
+    """
+    GET /imports/images/{operations_id}/manifest
+
+    :param operation_id:
+    :return:
+    """
+    return list_import_content(
+        operation_id, ApiRequestContextProxy.namespace(), "manifest"
+    )
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
 def import_image_parent_manifest(operation_id):
     """
     POST /imports/images/{operation_id}/parent_manifest
@@ -251,6 +272,44 @@ def import_image_parent_manifest(operation_id):
     """
 
     return content_upload(operation_id, "parent_manifest", request)
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def list_import_parent_manifest(operation_id: str):
+    """
+    GET /imports/images/{operations_id}/parent_manifest
+
+    :param operation_id:
+    :return:
+    """
+    return list_import_content(
+        operation_id, ApiRequestContextProxy.namespace(), "parent_manifest"
+    )
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def import_image_config(operation_id):
+    """
+    POST /imports/images/{operation_id}/image_config
+
+    :param operation_id:
+    :return:
+    """
+
+    return content_upload(operation_id, "image_config", request)
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def list_import_image_config(operation_id: str):
+    """
+    GET /imports/images/{operations_id}/image_config
+
+    :param operation_id:
+    :return:
+    """
+    return list_import_content(
+        operation_id, ApiRequestContextProxy.namespace(), "image_config"
+    )
 
 
 def content_upload(operation_id, content_type, request):
@@ -275,7 +334,10 @@ def content_upload(operation_id, content_type, request):
                 raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
 
             if not record.status.is_active():
-                raise api_exceptions.ConflictingRequest(message='import operation status does not allow uploads', detail={'status': record.status})
+                raise api_exceptions.ConflictingRequest(
+                    message="import operation status does not allow uploads",
+                    detail={"status": record.status},
+                )
 
             if not request.content_length:
                 raise api_exceptions.BadRequest(
@@ -291,7 +353,7 @@ def content_upload(operation_id, content_type, request):
                 db_session, operation_id, request.data, content_type
             )
 
-        resp = {"digest": digest, "created_at": created_at}
+        resp = {"digest": digest, "created_at": datetime_to_rfc3339(created_at)}
 
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
@@ -342,8 +404,8 @@ def save_import_content(
     content_record.digest = digest
     content_record.content_type = content_type
     content_record.operation_id = operation_id
-    content_record.storage_bucket = import_bucket
-    content_record.storage_key = key
+    content_record.content_storage_bucket = import_bucket
+    content_record.content_storage_key = key
 
     db_session.add(content_record)
     db_session.flush()
@@ -357,3 +419,31 @@ def save_import_content(
         raise Exception("Could not save into object store")
 
     return digest, content_record.created_at
+
+
+def list_import_content(operation_id: str, account: str, content_type: str):
+    """
+    Generic way to list content of a given type from the db entries
+
+    :param operation_id:
+    :param account:
+    :param content_type:
+    :return:
+    """
+    try:
+        with session_scope() as db_session:
+            resp = [
+                x.digest
+                for x in db_session.query(ImageImportContent)
+                .join(ImageImportContent.operation)
+                .filter(
+                    ImageImportOperation.account == account,
+                    ImageImportOperation.uuid == operation_id,
+                    ImageImportContent.content_type == content_type,
+                )
+                .all()
+            ]
+
+        return resp, 200
+    except Exception as ex:
+        return make_response_error(ex, in_httpcode=500), 500

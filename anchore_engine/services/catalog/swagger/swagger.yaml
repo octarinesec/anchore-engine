@@ -1783,6 +1783,28 @@ paths:
             $ref: "#/definitions/ImageImportContentResponse"
         500:
           description: "Internal Error"
+  /imports/images/{operation_id}/image_config:
+    post:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: import_image_config
+      x-anchore-authz-action: importImage
+      summary: "Import a docker or OCI image config object"
+      produces:
+        - "application/json"
+      consumes:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
 definitions:
   ImageAddMetadata:
     description: Additional data to add to an image record when an image is ingressed, such as dockerfile and annotations
@@ -2100,44 +2122,12 @@ definitions:
       local_image_id:
         type: string
         description: An "imageId" as used by Docker if available
-      metadata:
-        $ref: "#/definitions/ImageImportManifestMetadata"
-  ImageImportManifestMetadata:
-    type: object
-    properties:
-      layers:
-        type: array
-        items:
-          $ref: "#/definitions/ImageImportLayerMetadata"
-      platform:
-        $ref: "#/definitions/ImageImportPlatform"
-      created_at:
-        type: string
-        format: date-time
-        description: The date of the image build/tagging to allow insertion into the tag history based on another timestamp than the record creation in Anchore. Use this with caution.
-  ImageImportPlatform:
-    type: object
-    description: An image platform is a combination of an OS and an architecture
-    properties:
-      os:
-        type: string
-        example: linux
-      architecture:
-        type: string
-        example: amd64
-  ImageImportLayerMetadata:
-    type: object
-    properties:
-      digest:
-        type: string
-      size:
-        type: integer
-      location:
-        type: string
   ImportContentDigests:
     type: object
     required:
       - packages
+      - manifest
+      - image_config
     description: Digest of content to use in the final import
     properties:
       packages:
@@ -2152,6 +2142,9 @@ definitions:
       dockerfile:
         type: string
         description: Digest for reference content for dockerfile
+      image_config:
+        type: string
+        description: Digest for image config content
   Annotations:
     type: object
     description: Simple key/value pairs where the value may be optional

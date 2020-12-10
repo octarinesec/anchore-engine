@@ -5,12 +5,13 @@ import time
 from .tasks import WorkerTask
 from anchore_engine.subsys import logger
 from anchore_engine.common.schemas import (
-    ImportManifest,
+    InternalImportManifest,
     ImportQueueMessage,
     ValidationError,
-    ImageMetadata,
-    ContentTypeDigests,
+    InternalImportManifest,
+    ImportContentReference,
 )
+
 from anchore_engine.utils import timer, AnchoreException
 from anchore_engine.clients.services import internal_client_for
 from anchore_engine.clients.services.catalog import CatalogClient
@@ -30,6 +31,11 @@ from anchore_engine.services.analyzer.analysis import (
 )
 from anchore_engine.configuration import localconfig
 from anchore_engine.subsys import metrics, events, taskstate
+from anchore_engine.util.docker import (
+    DockerV2ManifestMetadata,
+    DockerV1ManifestMetadata,
+)
+
 import anchore_engine.clients.localanchore_standalone
 
 
@@ -41,78 +47,33 @@ class MissingRequiredContentException(Exception):
     pass
 
 
-def image_manifest_from_syft(syft_sbom):
-    """
+REQUIRED_CONTENT_TYPES = ["packages", "manifest", "image_config"]
+JSON_CONTENT_TYPES = [
+    "manifest",
+    "parent_manifest",
+    "image_config",
+    "packages",
+]
 
-    Example sbom's "source" property:
-    {
-    ...
-      "source": {
-        "type": "image",
-        "target": {
-            "userInput": "nginx:latest",
-            "scope": "Squashed",
-            "layers": [
-            {
-             "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-             "digest": "sha256:d0fe97fa8b8cefdffcef1d62b65aba51a6c87b6679628a2b50fc6a7a579f764c",
-             "size": 69201311
-            },
-            {
-             "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-             "digest": "sha256:f14cffae5c1add412127e0704008bb8e730773c0945345c9ea61b7e6eabea8e5",
-             "size": 63622974
-            },
-            {
-             "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-             "digest": "sha256:280ddd108a0a0ef53ed20d6715facc1cdd9497ef05cad03c3e5b73521a588511",
-             "size": 1202
-            },
-            {
-             "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-             "digest": "sha256:fe08d9d9f18556ca241f00b6efd6c7b25767463084e14c05da9e535c0782409c",
-             "size": 1957
-            },
-            {
-             "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-             "digest": "sha256:cdd1d8ebeb066bd40f9be824201afe18f0d4fe93b8462353921f0277c09e1289",
-             "size": 1037
-            }
-            ],
-              "size": 132828481,
-              "digest": "sha256:f35646e83998b844c3f067e5a2cff84cdf0967627031aeda3042d78996b68d35",
-              "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-              "tags": [
-                "nginx:latest"
-              ]
-            }
-        },
-        "distro": {
-          "name": "debian",
-          "version": "10",
-          "idLike": ""
-        },
-        "descriptor": {
-          "name": "syft",
-          "version": "0.8.0"
-      }
-    }
-    :param syft_sbom:
+
+def get_image_size(manifest: dict):
+    """
+    Sum the layer sizes from the manifest to get an image size
+    :param manifest:
     :return:
     """
-    return syft_sbom.get("source", {}).get("target")
+
+    return sum([x.get("size", 0) for x in manifest.get("layers", [])])
 
 
 # Copied and modified from the localanchore_standalone file's analyze_image()
 def process_import(
-    guessed_manifest: dict,
     image_record: dict,
     sbom: dict,
-    import_manifest: ImportManifest,
+    import_manifest: InternalImportManifest,
 ):
     """
 
-    :param guessed_manifest:
     :param image_record:
     :param sbom: map of content type to manifest (e.g. {'packages': {....}, 'dockerfile': '....'}
     :param import_manifest:
@@ -120,22 +81,31 @@ def process_import(
     """
 
     # need all this
-    analyzer_manifest = {}  # Apparently not used
+    analyzer_manifest = {}
     image_id = import_manifest.local_image_id or import_manifest.digest
-    layers = (
-        []
-    )  # TODO: fix this to use layers from 'source' element of the packages sbom?
-    familytree = []
-    image_size = import_manifest.metadata.size
-    image_arch = import_manifest.metadata.platform.architecture
-    docker_history = {}
-    pullstring = None
-    fulltag = None
-
     syft_packages = sbom.get("packages")
     dockerfile = sbom.get("dockerfile")
-    manifest = sbom.get("manifest", guessed_manifest)
+    manifest = sbom.get("manifest")
+    image_config = sbom.get("image_config")
 
+    if manifest.get("schemaVersion", 1) == 2:
+        parser = DockerV2ManifestMetadata(manifest, image_config)
+    else:
+        parser = DockerV1ManifestMetadata(manifest)
+
+    layers = parser.layer_ids
+    image_arch = parser.architecture
+    docker_history = parser.history
+    image_size = get_image_size(manifest)
+    familytree = []
+
+    pullstring = None
+    fulltag = None
+    if dockerfile:
+        dockerfile_mode = "Actual"
+    else:
+        dockerfile_mode = "Guessed"
+        dockerfile = parser.inferred_dockerfile
 
     try:
         image_digest = image_record["imageDigest"]
@@ -143,8 +113,6 @@ def process_import(
             raise Exception(
                 "Image digest in import manifest does not match catalog record"
             )
-
-        dockerfile_mode = image_record.get("dockerfile_mode", "")
 
         image_detail = image_record["image_detail"][0]
         pullstring = (
@@ -161,28 +129,6 @@ def process_import(
             + ":"
             + image_detail["tag"]
         )
-
-        # TODO: use temp/spool for content downloads and composition of result.
-        # Have updated the API spec and obj to have multiple content types, use those. Not working yet.
-        # Need to update the API controllers to handle the manifest and dockerfile contents
-
-        # if image_detail['dockerfile']:
-        #     dockerfile_contents = str(base64.decodebytes(image_detail['dockerfile'].encode('utf-8')), 'utf-8')
-        # else:
-        #     dockerfile_contents = None
-
-        # manifest_data = image_manifest_from_syft(syft_packages)
-        # try:
-        #     if manifest_data['schemaVersion'] == 1:
-        #         docker_history, layers, dockerfile_contents, dockerfile_mode, imageArch = get_image_metadata_v1(staging_dirs, imageDigest, imageId, manifest_data, dockerfile_contents=dockerfile_contents, dockerfile_mode=dockerfile_mode)
-        #     elif manifest_data['schemaVersion'] == 2:
-        #         docker_history, layers, dockerfile_contents, dockerfile_mode, imageArch = get_image_metadata_v2(staging_dirs, imageDigest, imageId, manifest_data, dockerfile_contents=dockerfile_contents, dockerfile_mode=dockerfile_mode)
-        #     else:
-        #         raise ManifestSchemaVersionError(schema_version=manifest_data['schemaVersion'], pull_string=pullstring, tag=fulltag)
-        # except ManifestSchemaVersionError:
-        #     raise
-        # except Exception as err:
-        #     raise ManifestParseError(cause=err, pull_string=pullstring, tag=fulltag)
 
         timer = time.time()
 
@@ -229,7 +175,6 @@ def process_import(
                     analyzer_manifest,
                 )
             )
-            logger.debug("Dumping image report: {}".format(image_report))
         except Exception as err:
             raise anchore_engine.clients.localanchore_standalone.AnalysisReportGenerationError(
                 cause=err, pull_string=pullstring, tag=fulltag
@@ -253,39 +198,36 @@ def process_import(
 
 
 def get_content(
-    account: str, operation_id: str, manifest: ImportManifest, client: CatalogClient
+    manifest: InternalImportManifest,
+    client: CatalogClient,
 ) -> dict:
-    # NOTE: need to add the bucket and key into the message queue so that we don't have to share logic to fetch the content
-    bucket = "image_content_imports"  # wrong
+
     content_map = {}
-    if manifest.contents.packages:
-        key = "{}/{}/{}/{}".format(
-            account, operation_id, "packages", manifest.contents.packages
+    for content_ref in manifest.contents:
+        logger.info(
+            "loading import content type %s from %s/%s",
+            content_ref.content_type,
+            content_ref.bucket,
+            content_ref.key,
         )
-        content_map["packages"] = json.loads(client.get_document(bucket, key))
-
-    if manifest.contents.dockerfile:
-        key = "{}/{}/{}/{}".format(
-            account, operation_id, "dockerfile", manifest.contents.dockerfile
-        )
-        content_map["dockerfile"] = client.get_document(bucket, key)
-
-    if manifest.contents.manifest:
-        key = "{}/{}/{}/{}".format(
-            account, operation_id, "manifest", manifest.contents.manifest
-        )
-        content_map["manifest"] = client.get_document(bucket, key)
-
-    if manifest.contents.parent_manifest:
-        key = "{}/{}/{}/{}".format(
-            account, operation_id, "parent_manifest", manifest.contents.parent_manifest
-        )
-        content_map["parent_manifest"] = client.get_document(bucket, key)
+        raw = client.get_document(content_ref.bucket, content_ref.key)
+        if content_ref.content_type in JSON_CONTENT_TYPES:
+            content_map[content_ref.content_type] = json.loads(raw)
+        else:
+            content_map[content_ref.content_type] = raw
 
     return content_map
 
 
-def import_image(operation_id, account, import_manifest: ImportManifest):
+def check_required_content(sbom_map: dict):
+    for x in REQUIRED_CONTENT_TYPES:
+        if not sbom_map.get(x):
+            raise MissingRequiredContentException(
+                "Required content type {} not loaded".format(x)
+            )
+
+
+def import_image(operation_id, account, import_manifest: InternalImportManifest):
     """
     The main thread of exec for importing an image
 
@@ -305,12 +247,6 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
 
     try:
         catalog_client = internal_client_for(CatalogClient, account)
-
-        logger.info("Loading content from import")
-        sbom_map = get_content(account, operation_id, import_manifest, catalog_client)
-
-        logger.info("SBOM Map: {}".format(sbom_map.keys()))
-        manifest = image_manifest_from_syft(sbom_map.get("packages", {}))
 
         # check to make sure image is still in DB
         catalog_client = internal_client_for(CatalogClient, account)
@@ -340,10 +276,15 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
                 catalog_client, image_digest, image_record
             )
 
+            logger.info("Loading content from import")
+            sbom_map = get_content(import_manifest, catalog_client)
+
+            manifest = sbom_map.get("manifest")
+
             try:
                 logger.info("processing image import data")
                 image_data, analysis_manifest = process_import(
-                    manifest, image_record, sbom_map, import_manifest
+                    image_record, sbom_map, import_manifest
                 )
             except AnchoreException as e:
                 event = events.ImageAnalysisFailed(
@@ -351,6 +292,12 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
                 )
                 analysis_events.append(event)
                 raise
+
+            # Store the manifest in the object store
+            logger.info("storing image manifest")
+            catalog_client.put_document(
+                bucket="manifest_data", name=image_digest, inobj=json.dumps(manifest)
+            )
 
             # Save the results to the upstream components and data stores
             logger.info("storing import result")
@@ -382,10 +329,13 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
             )
 
             try:
-                catalog_client.update_image_import_status(operation_id, status='complete')
+                catalog_client.update_image_import_status(
+                    operation_id, status="complete"
+                )
             except Exception as err:
-                logger.debug_exception('failed updating import status success, will continue and rely on expiration for GC later')
-
+                logger.debug_exception(
+                    "failed updating import status success, will continue and rely on expiration for GC later"
+                )
 
             try:
                 metrics.counter_inc(name="anchore_import_success")
@@ -412,9 +362,11 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
             )
 
             try:
-                catalog_client.update_image_import_status(operation_id, status='failed')
+                catalog_client.update_image_import_status(operation_id, status="failed")
             except Exception as err:
-                logger.debug_exception('failed updating import status failure, will continue and rely on expiration for GC later')
+                logger.debug_exception(
+                    "failed updating import status failure, will continue and rely on expiration for GC later"
+                )
 
             if account and image_digest:
                 for image_detail in image_record["image_detail"]:

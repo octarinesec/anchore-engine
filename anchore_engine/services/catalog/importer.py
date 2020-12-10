@@ -1,20 +1,19 @@
 import enum
+import json
 import retrying
-import datetime
 
 from anchore_engine.apis import exceptions as api_exceptions
 from anchore_engine.apis.exceptions import BadRequest
 from anchore_engine.clients.services import internal_client_for
 from anchore_engine.clients.services.simplequeue import SimpleQueueClient
-from anchore_engine.common.helpers import make_response_error
 from anchore_engine.common.schemas import (
     ImportManifest,
     ImportQueueMessage,
-    ImageMetadata,
+    InternalImportManifest,
+    ImportContentReference,
 )
 from anchore_engine.db import (
     ImageImportContent,
-    session_scope,
     ImageImportOperation,
     db_catalog_image,
 )
@@ -22,8 +21,13 @@ from anchore_engine.db.entities.catalog import ImportState
 from anchore_engine.services.catalog.catalog_impl import add_or_update_image
 from anchore_engine.subsys import logger
 from anchore_engine.util.docker import DockerImageReference
+from anchore_engine.subsys.object_store import get_manager
 
 IMPORT_QUEUE = "images_to_analyze"
+ANCHORE_SYSTEM_ANNOTATION_KEY_PREFIX = "anchore.system/"
+IMPORT_OPERATION_ANNOTATION_KEY = (
+    ANCHORE_SYSTEM_ANNOTATION_KEY_PREFIX + "import_operation_id"
+)
 
 
 class ImportTypes(enum.Enum):
@@ -31,15 +35,24 @@ class ImportTypes(enum.Enum):
     The types of content supported for upload
     """
 
-    packages = 'packages'
-    dockerfile = 'dockerfile'
-    manifest = 'manifest'
-    parent_manifest = 'parent_manifest'
+    packages = "packages"
+    dockerfile = "dockerfile"
+    manifest = "manifest"
+    parent_manifest = "parent_manifest"
+    image_config = "image_config"
+
+
+# Types that must be presnt in an import manifest for the system to begin the import process
+REQUIRED_IMPORT_TYPES = [
+    ImportTypes.packages,
+    ImportTypes.manifest,
+    ImportTypes.image_config,
+]
 
 
 @retrying.retry(wait_fixed=1000, stop_max_attempt_number=3)
 def queue_import_task(
-    account: str, operation_id: str, manifest: ImportManifest
+    account: str, operation_id: str, manifest: InternalImportManifest
 ) -> bool:
     """
     Queue the task for analysis
@@ -49,12 +62,15 @@ def queue_import_task(
     :return:
     """
     # Replace this is a state watcher, similar to the image state handlers
-    logger.info("Queueing import task for account %s", account)
+    logger.debug(
+        "Queueing import task for account %s operation id %s", account, operation_id
+    )
 
     task = ImportQueueMessage()
     task.account = account
     task.manifest = manifest
     task.operation_uuid = operation_id
+    task.image_digest = manifest.digest
 
     q_client = internal_client_for(SimpleQueueClient, userId=account)
     resp = q_client.enqueue(name=IMPORT_QUEUE, inobj=task.to_json())
@@ -73,60 +89,100 @@ def verify_import_manifest_content(
     :return: set of missing content digests
     """
 
-    if (import_manifest.contents.packages and
-        db_session.query(ImageImportContent)
-        .filter(
-            ImageImportContent.operation_id == operation_id,
-            ImageImportContent.digest == import_manifest.contents.packages,
-            ImageImportContent.content_type == ImportTypes.packages.value
+    records = []
+    if import_manifest.contents.packages:
+        found = (
+            db_session.query(ImageImportContent)
+            .filter(
+                ImageImportContent.operation_id == operation_id,
+                ImageImportContent.digest == import_manifest.contents.packages,
+                ImageImportContent.content_type == ImportTypes.packages.value,
+            )
+            .one_or_none()
         )
-        .one_or_none()
-        is None
-    ):
-        raise ValueError(import_manifest.contents.packages)
 
-    if (import_manifest.contents.dockerfile and
-        db_session.query(ImageImportContent)
-        .filter(
-            ImageImportContent.operation_id == operation_id,
-            ImageImportContent.digest == import_manifest.contents.dockerfile,
-            ImageImportContent.content_type == ImportTypes.dockerfile.value
+        if found is None:
+            raise ValueError(import_manifest.contents.packages)
+
+        records.append(found)
+
+    if import_manifest.contents.dockerfile:
+        found = (
+            db_session.query(ImageImportContent)
+            .filter(
+                ImageImportContent.operation_id == operation_id,
+                ImageImportContent.digest == import_manifest.contents.dockerfile,
+                ImageImportContent.content_type == ImportTypes.dockerfile.value,
+            )
+            .one_or_none()
         )
-        .one_or_none()
-        is None
-    ):
-        raise ValueError(import_manifest.contents.dockerfile)
 
-    if (import_manifest.contents.manifest and
-        db_session.query(ImageImportContent)
-        .filter(
-            ImageImportContent.operation_id == operation_id,
-            ImageImportContent.digest == import_manifest.contents.manifest,
-            ImageImportContent.content_type == ImportTypes.manifest.value
+        if found is None:
+            raise ValueError(import_manifest.contents.dockerfile)
+        records.append(found)
+
+    if import_manifest.contents.manifest:
+        found = (
+            db_session.query(ImageImportContent)
+            .filter(
+                ImageImportContent.operation_id == operation_id,
+                ImageImportContent.digest == import_manifest.contents.manifest,
+                ImageImportContent.content_type == ImportTypes.manifest.value,
+            )
+            .one_or_none()
         )
-        .one_or_none()
-        is None
-    ):
-        raise ValueError(import_manifest.contents.manifest)
+        if found is None:
+            raise ValueError(import_manifest.contents.manifest)
+        records.append(found)
 
-    if (import_manifest.contents.parent_manifest and
-        db_session.query(ImageImportContent)
-        .filter(
-            ImageImportContent.operation_id == operation_id,
-            ImageImportContent.digest == import_manifest.contents.parent_manifest,
-            ImageImportContent.content_type == ImportTypes.parent_manifest.value,
+    if import_manifest.contents.parent_manifest:
+        found = (
+            db_session.query(ImageImportContent)
+            .filter(
+                ImageImportContent.operation_id == operation_id,
+                ImageImportContent.digest == import_manifest.contents.parent_manifest,
+                ImageImportContent.content_type == ImportTypes.parent_manifest.value,
+            )
+            .one_or_none()
         )
-        .one_or_none()
-        is None
-    ):
-        raise ValueError(import_manifest.contents.parent_manifest)
+        if found is None:
+            raise ValueError(import_manifest.contents.parent_manifest)
+        records.append(found)
 
-    return None
+    if import_manifest.contents.image_config:
+        found = (
+            db_session.query(ImageImportContent)
+            .filter(
+                ImageImportContent.operation_id == operation_id,
+                ImageImportContent.digest == import_manifest.contents.image_config,
+                ImageImportContent.content_type == ImportTypes.image_config.value,
+            )
+            .one_or_none()
+        )
+        if found is None:
+            raise ValueError(import_manifest.contents.parent_manifest)
+        records.append(found)
+
+    return records
+
+
+def check_required_content(import_manifest: ImportManifest):
+    """
+    Verify that required fields are set
+
+    :param import_manifest:
+    :return:
+    """
+    for t in REQUIRED_IMPORT_TYPES:
+        if getattr(import_manifest.contents, t.value) is None:
+            raise api_exceptions.BadRequest(
+                "import manifest must have digest for content type {} present", t.value
+            )
 
 
 def finalize_import_operation(
     db_session, account: str, operation_id: str, import_manifest: ImportManifest
-) -> dict:
+) -> InternalImportManifest:
     """
     Finalize the import operation itself
 
@@ -145,14 +201,17 @@ def finalize_import_operation(
         raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
 
     if record.status != ImportState.pending:
-        # TODO: Fix these to not be API exception, just regular confict/value error exceptions since this isn't the API layer
         raise api_exceptions.ConflictingRequest(
             message="Invalid operation status. Must be in pending state to finalize",
             detail={"status": record.status.value},
         )
 
+    check_required_content(import_manifest)
+
     try:
-        verify_import_manifest_content(db_session, operation_id, import_manifest)
+        content_records = verify_import_manifest_content(
+            db_session, operation_id, import_manifest
+        )
     except ValueError as ex:
         raise api_exceptions.BadRequest(
             message="One or more referenced content digests not found for the operation id",
@@ -160,16 +219,52 @@ def finalize_import_operation(
         )
 
     try:
+        internal_manifest = internal_manifest_from_external(
+            import_manifest, content_records
+        )
+
         # Update the status
         record.status = ImportState.processing
-        queue_import_task(account, operation_id, import_manifest)
+        # Queue presence should be gated by the image record, not here
+        # queue_import_task(account, operation_id, internal_manifest)
     except:
         logger.debug_exception("Failed to queue task message. Setting failed status")
         record.status = ImportState.failed
         raise
 
     db_session.flush()
-    return record
+
+    return internal_manifest
+
+
+def internal_manifest_from_external(
+    manifest: ImportManifest, content_records: list
+) -> InternalImportManifest:
+    """
+    Construct an internal manifest from an external one plus the db records for the content
+
+    :param manifest: ImportManifest object
+    :param content_records: list of ImageImportContent records
+    :return:
+    """
+    internal_manifest = InternalImportManifest()
+    internal_manifest.tags = manifest.tags
+    internal_manifest.digest = manifest.digest
+    internal_manifest.local_image_id = manifest.local_image_id
+    internal_manifest.operation_uuid = manifest.operation_uuid
+    internal_manifest.parent_digest = manifest.parent_digest
+
+    internal_manifest.contents = []
+
+    for record in content_records:
+        ref = ImportContentReference()
+        ref.digest = record.digest
+        ref.content_type = record.content_type
+        ref.bucket = record.content_storage_bucket
+        ref.key = record.content_storage_key
+        internal_manifest.contents.append(ref)
+
+    return internal_manifest
 
 
 def import_image(
@@ -228,13 +323,32 @@ def import_image(
         raise ValueError("Must have image digest in image reference")
 
     # Finalize the import
-    finalize_import_operation(dbsession, account, operation_id, import_manifest)
+    internal_import_manifest = finalize_import_operation(
+        dbsession, account, operation_id, import_manifest
+    )
 
     # Get the dockerfile content if available
-    dockerfile_content = ""
-    dockerfile_mode = "Guessed"
+    if import_manifest.contents.dockerfile:
+        rec = [
+            ref
+            for ref in internal_import_manifest.contents
+            if ref.content_type == ImportTypes.dockerfile.value
+        ][0]
+        obj_mgr = get_manager()
+        dockerfile_content = obj_mgr.get_document(
+            userId=account,
+            bucket=rec.bucket,
+            archiveId=rec.key,
+        )
+        dockerfile_mode = "Actual"
+    else:
+        dockerfile_content = ""
+        dockerfile_mode = "Guessed"
 
-    manifest = import_manifest.to_json()
+    # Set the manifest to the import manifest. This is swapped out for the real manifest during the import operation on
+    # the analyzer
+    manifest = json.dumps(internal_import_manifest.to_json())
+
     parent_manifest = ""
 
     # Update the db for the image record
@@ -247,10 +361,9 @@ def import_image(
         parentdigest=import_manifest.parent_digest
         if import_manifest.parent_digest
         else import_manifest.digest,
-        #created_at=
         dockerfile=dockerfile_content,
         dockerfile_mode=dockerfile_mode,
-        manifest=manifest, # Fo now use the import manifest as the image manifest. This will get set properly later
+        manifest=manifest,  # Fo now use the import manifest as the image manifest. This will get set properly later
         parent_manifest=parent_manifest,
         annotations=annotations,
     )
@@ -260,10 +373,6 @@ def import_image(
         raise Exception("No record updated/inserted")
 
     return image_record
-
-
-ANCHORE_SYSTEM_ANNOTATION_KEY_PREFIX = "anchore.system/"
-IMPORT_OPERATION_ANNOTATION_KEY = ANCHORE_SYSTEM_ANNOTATION_KEY_PREFIX + "import_operation_id"
 
 
 def add_import_annotations(import_manifest: ImportManifest, annotations: dict = None):

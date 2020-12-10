@@ -233,37 +233,6 @@ class ImagePlatform(JsonSerializable):
         self.architecture = architecture
 
 
-class ImageMetadata(JsonSerializable):
-    """
-    Information about the structure, and attributes of the image itself.
-    Should not contain any data that must be extracted from inside the image.
-
-    For example, this data is from things like `docker inspect` or `podman inspect`
-
-    """
-
-    class ImageMetadataV1Schema(Schema):
-        layers = fields.List(
-            fields.Nested(ImageLayerMetadata.ImageLayerMetadataV1Schema),
-            allow_none=True,
-        )
-        size = fields.Int(allow_none=True)
-        platform = fields.Nested(ImagePlatform.ImagePlatformV1Schema, allow_none=True)
-        created_at = fields.DateTime(allow_none=True)
-
-        @post_load
-        def make(self, data, **kwargs):
-            return ImageMetadata(**data)
-
-    __schema__ = ImageMetadataV1Schema()
-
-    def __init__(self, layers=None, size=None, platform=None, created_at=None):
-        self.layers = layers
-        self.size = size
-        self.platform = platform
-        self.created_at = created_at
-
-
 class ImportContentReference(JsonSerializable):
     """
     An import content reference for the internal object store. This is primarily used for internal messaging
@@ -319,9 +288,6 @@ class ContentTypeDigests(JsonSerializable):
 
 class ImportManifest(JsonSerializable):
     class ImportManifestV1Schema(Schema):
-        metadata = fields.Nested(
-            ImageMetadata.ImageMetadataV1Schema, allow_none=True, required=False
-        )
         tags = fields.List(fields.String(), allow_none=True)
         contents = fields.Nested(ContentTypeDigests.ContentTypeDigestsV1Schema)
         digest = fields.String(required=True)

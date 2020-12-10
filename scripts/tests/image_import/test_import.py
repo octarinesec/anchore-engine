@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.8
 
 """
-Simple example of an import flow of data output from `syft docker:nginx --output json` into Anchore. Uses syft v0.8.0 output.
+Simple example of an import flow of data output from `syft docker:nginx --output json` into Anchore. Uses syft v0.10.0 output.
 """
 
 import sys
@@ -9,17 +9,21 @@ import requests
 import json
 import base64
 import subprocess
+import time
+
 
 JSON_HEADER = {"Content-Type": "application/json"}
-ENDPOINT = "http://localhost:8088"
+# endpoint = "http://localhost:8088"
 
 # Defaults... don"t use these
 AUTHC = ("admin", "foobar")
 
-tag_to_scan = sys.argv[1]
+endpoint = sys.argv[1]
+
+tag_to_scan = sys.argv[2]
 
 # Always load from user input
-dockerfile = sys.argv[2] if len(sys.argv) > 2 else None
+dockerfile = sys.argv[3] if len(sys.argv) > 3 else None
 
 
 def run_syft(image):
@@ -39,7 +43,7 @@ def check_response(api_resp: requests.Response) -> dict:
 
 def init_operation():
     print("Creating import operation")
-    resp = requests.post(ENDPOINT + "/imports/images", auth=AUTHC)
+    resp = requests.post(endpoint + "/imports/images", auth=AUTHC)
 
     # There are other fields present, such as "expires_at" timestamp, but all we need to proceed is the operation"s uuid.
     operation_id = check_response(resp).get("uuid")
@@ -80,7 +84,7 @@ def upload_content(content, content_type, operation_id):
 
     print("Uploading {}".format(content_type))
     resp = requests.post(
-        ENDPOINT + "/imports/images/{}/{}".format(operation_id, content_type),
+        endpoint + "/imports/images/{}/{}".format(operation_id, content_type),
         data=content,
         headers=JSON_HEADER
         if content_type in ["manifest", "parent_manifest", "packages", "image_config"]
@@ -89,6 +93,41 @@ def upload_content(content, content_type, operation_id):
     )
     content_digest = check_response(resp).get("digest")
     return content_digest
+
+
+def wait_for_image(image_digest):
+    while True:
+        print("Waiting for analysis completion {}".format(image_digest))
+        resp = requests.get(
+            endpoint + "/images/{}".format(image_digest),
+            auth=AUTHC,
+        )
+        status = check_response(resp)[0].get("analysis_status")
+        if status not in ["analyzed", "analysis_failed"]:
+            time.sleep(5)
+        else:
+            break
+
+    return status
+
+
+def get_vuln_scan(image_digest):
+    print("Getting vulnerability listing {}".format(image_digest))
+    resp = requests.get(
+        endpoint + "/images/{}/vuln/all".format(image_digest),
+        auth=AUTHC,
+    )
+    return check_response(resp)
+
+
+def get_policy_eval(image_digest, tag):
+    print("Getting policy eval {} {}".format(image_digest, tag))
+    resp = requests.get(
+        endpoint + "/images/{}/check".format(image_digest),
+        params={"tag": tag, "detail": True},
+        auth=AUTHC,
+    )
+    return check_response(resp)
 
 
 # Step 1: Run syft
@@ -139,15 +178,22 @@ add_payload = {
 
 # Step 4: Add the image for processing the import via the analysis queue
 print("Adding image/finalizing")
-resp = requests.post(ENDPOINT + "/images", json=add_payload, auth=AUTHC)
+resp = requests.post(endpoint + "/images", json=add_payload, auth=AUTHC)
 result = check_response(resp)
 
 # Step 5: Verify the image record now exists
 print("Checking image list")
 resp = requests.get(
-    ENDPOINT + "/images/{digest}".format(digest=image_digest), auth=AUTHC
+    endpoint + "/images/{digest}".format(digest=image_digest), auth=AUTHC
 )
 images = check_response(resp)
+
+print("Waiting for image to finish import")
+wait_for_image(image_digest)
+
+print("Vuln scan: {}".format(get_vuln_scan(image_digest)))
+
+print("Policy eval: {}".format(get_policy_eval(image_digest, tag_to_scan)))
 
 # Check for finished
 print("Completed successfully!")

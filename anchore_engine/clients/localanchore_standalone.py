@@ -796,9 +796,15 @@ def get_image_metadata_v1(
     unpackdir = staging_dirs["unpackdir"]
 
     parser = DockerV1ManifestMetadata(manifest_data)
-    docker_history = parser.history()
-    layers = parser.layer_ids()
-    architecture = parser.architecture()
+    docker_history = parser.history
+    layers = parser.layer_ids
+    architecture = parser.architecture
+
+    if dockerfile_contents:
+        dockerfile_mode = "Actual"
+    else:
+        dockerfile_contents = parser.inferred_dockerfile
+        dockerfile_mode = "Guessed"
 
     with open(os.path.join(unpackdir, "docker_history.json"), "w") as OFH:
         OFH.write(json.dumps(docker_history))
@@ -829,19 +835,19 @@ def get_image_metadata_v2(
 
     image_config = get_image_config(copydir, cachedir, imageId)
     parser = DockerV2ManifestMetadata(manifest_data, image_config)
-    docker_history = parser.history()
-    layers = parser.layer_ids()
+    docker_history = parser.history
+    layers = parser.layer_ids
 
     if dockerfile_contents:
         dockerfile_mode = "Actual"
     else:
-        dockerfile_contents = parser.inferred_dockerfile()
+        dockerfile_contents = parser.inferred_dockerfile
         dockerfile_mode = "Guessed"
 
     with open(os.path.join(unpackdir, "docker_history.json"), "w") as OFH:
         OFH.write(json.dumps(docker_history))
 
-    architecture = parser.architecture()
+    architecture = parser.architecture
 
     return docker_history, layers, dockerfile_contents, dockerfile_mode, architecture
 

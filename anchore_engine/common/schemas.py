@@ -12,9 +12,9 @@ from anchore_engine.utils import datetime_to_rfc3339, rfc3339str_to_datetime
 ValidationError = marshmallow.ValidationError
 
 # Add the rfc3339 format handlers
-fields.DateTime.SERIALIZATION_FUNCS["rfc3339"] = datetime_to_rfc3339
-fields.DateTime.DESERIALIZATION_FUNCS["rfc3339"] = rfc3339str_to_datetime
-fields.DateTime.DEFAULT_FORMAT = "rfc3339"
+# fields.DateTime.SERIALIZATION_FUNCS["rfc3339"] = datetime_to_rfc3339
+# fields.DateTime.DESERIALIZATION_FUNCS["rfc3339"] = rfc3339str_to_datetime
+# fields.DateTime.DEFAULT_FORMAT = "rfc3339"
 
 
 # TODO: This is not enforced in the interface yet, but should be the input and return type for queue operations in this API

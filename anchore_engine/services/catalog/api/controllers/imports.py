@@ -225,7 +225,7 @@ def import_image_dockerfile(operation_id):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def list_import_dockerfile(operation_id: str):
+def list_import_dockerfiles(operation_id: str):
     """
     GET /imports/images/{operations_id}/dockerfile
 
@@ -250,7 +250,7 @@ def import_image_manifest(operation_id):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def list_import_manifest(operation_id: str):
+def list_import_manifests(operation_id: str):
     """
     GET /imports/images/{operations_id}/manifest
 
@@ -275,7 +275,7 @@ def import_image_parent_manifest(operation_id):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def list_import_parent_manifest(operation_id: str):
+def list_import_parent_manifests(operation_id: str):
     """
     GET /imports/images/{operations_id}/parent_manifest
 
@@ -300,7 +300,7 @@ def import_image_config(operation_id, contents=None):
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def list_import_image_config(operation_id: str):
+def list_import_image_configs(operation_id: str):
     """
     GET /imports/images/{operations_id}/image_config
 
@@ -432,17 +432,22 @@ def list_import_content(operation_id: str, account: str, content_type: str):
     """
     try:
         with session_scope() as db_session:
-            resp = [
-                x.digest
-                for x in db_session.query(ImageImportContent)
+            resp = []
+            for x in (
+                db_session.query(ImageImportContent)
                 .join(ImageImportContent.operation)
                 .filter(
                     ImageImportOperation.account == account,
                     ImageImportOperation.uuid == operation_id,
                     ImageImportContent.content_type == content_type,
                 )
-                .all()
-            ]
+            ):
+                resp.append(
+                    {
+                        "created_at": datetime_to_rfc3339(x.created_at),
+                        "digest": x.digest,
+                    }
+                )
 
         return resp, 200
     except Exception as ex:

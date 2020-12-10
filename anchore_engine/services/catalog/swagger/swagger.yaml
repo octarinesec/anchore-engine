@@ -1735,6 +1735,25 @@ paths:
             $ref: "#/definitions/ImageImportContentResponse"
         500:
           description: "Internal Error"
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: list_import_dockerfiles
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/PackageDigestList"
+        500:
+          description: "Internal Error"
   /imports/images/{operation_id}/manifest:
     post:
       x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
@@ -1758,6 +1777,25 @@ paths:
           description: "success"
           schema:
             $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: list_import_manifests
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/PackageDigestList"
         500:
           description: "Internal Error"
   /imports/images/{operation_id}/parent_manifest:
@@ -1788,6 +1826,25 @@ paths:
             $ref: "#/definitions/ImageImportContentResponse"
         500:
           description: "Internal Error"
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: list_import_parent_manifests
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/PackageDigestList"
+        500:
+          description: "Internal Error"
   /imports/images/{operation_id}/image_config:
     post:
       x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
@@ -1813,6 +1870,25 @@ paths:
           description: "success"
           schema:
             $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: list_import_image_configs
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/PackageDigestList"
         500:
           description: "Internal Error"
 definitions:

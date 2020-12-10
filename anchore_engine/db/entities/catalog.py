@@ -764,6 +764,9 @@ class ImageImportOperation(Base, UtilMixin):
     def to_json(self):
         j = super().to_json()
         j["status"] = self.status.value
+        j["expires_at"] = datetime_to_rfc3339(self.expires_at)
+        j["created_at"] = datetime_to_rfc3339(self.created_at)
+        j["last_update"] = datetime_to_rfc3339(self.last_updated)
         return j
 
 
@@ -784,3 +787,9 @@ class ImageImportContent(Base, UtilMixin):
     content_storage_bucket = Column(String)
     content_storage_key = Column(String)
     operation = relationship("ImageImportOperation", back_populates="contents")
+
+    def to_json(self):
+        j = super().to_json()
+        j["created_at"] = datetime_to_rfc3339(self.created_at)
+        j["last_update"] = datetime_to_rfc3339(self.last_updated)
+        return j

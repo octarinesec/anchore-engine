@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.8
 
 """
 Simple example of an import flow of data output from `syft docker:nginx --output json` into Anchore. Uses syft v0.8.0 output.
@@ -8,32 +8,23 @@ import sys
 import requests
 import json
 import base64
+import subprocess
 
 JSON_HEADER = {"Content-Type": "application/json"}
-ENDPOINT = "http://localhost"
+ENDPOINT = "http://localhost:8088"
 
 # Defaults... don"t use these
 AUTHC = ("admin", "foobar")
 
-
-# The input file with the syft output sbom
-syft_package_sbom = sys.argv[1]
-if not syft_package_sbom:
-    raise Exception("Must have valid input file as arg 1")
-
-# Load other types from the input
+tag_to_scan = sys.argv[1]
 
 # Always load from user input
-dockerfile = sys.argv[2]
+dockerfile = sys.argv[2] if len(sys.argv) > 2 else None
 
-# Generate/fetch from syft/skopeo?
-manifest = sys.argv[3] if len(sys.argv) > 3 else None
 
-# Generate/fetch from syft/skopeo?
-parent_manifest = sys.argv[4] if len(sys.argv) > 4 else None
-
-# Get from syft output
-image_config = sys.argv[5] if len(sys.argv) > 5 else None
+def run_syft(image):
+    output = subprocess.check_output(["syft", "docker:{}".format(image), "-o", "json"])
+    return output
 
 
 def check_response(api_resp: requests.Response) -> dict:
@@ -55,28 +46,37 @@ def init_operation():
     return operation_id
 
 
-def extract_syft_metadata(path):
+def load_syft_data(path):
     with open(path) as f:
         sbom_content = bytes(f.read(), "utf-8")
 
     print("Loaded content from file: {}".format(path))
-    # Parse into json to extract some info
-    parsed = json.loads(str(sbom_content, "utf-8"))
-    digest = parsed["source"]["target"][
-        "digest"
-    ]  # This is the image id, use it as digest since syft doesn't get a digest from a registry
-    local_image_id = parsed["source"]["target"]["digest"]
-    tags = parsed["source"]["target"]["tags"]
+    return sbom_content
 
-    return digest, local_image_id, tags
+
+def extract_syft_metadata(data):
+    """
+    Parse metadata from the syft output string
+
+    :param data:
+    :return:
+    """
+    # Parse into json to extract some info
+    parsed = json.loads(str(data, "utf-8"))
+    digest = parsed["source"]["target"][
+        "manifestDigest"
+    ]  # This is the image id, use it as digest since syft doesn't get a digest from a registry
+
+    local_image_id = parsed["source"]["target"]["imageID"]
+    tags = parsed["source"]["target"]["tags"]
+    manifest = base64.standard_b64decode(parsed["source"]["target"]["manifest"])
+    config = base64.standard_b64decode(parsed["source"]["target"]["config"])
+    return digest, local_image_id, tags, manifest, config
 
 
 # NOTE: in these examples we load from the file as bytes arrays instead of json objects to ensure that the digest computation matches and
 # isn't impacted by any python re-ordering of keys or adding/removing whitespace. This should enable the output of `sha256sum <file>` to match the digests returned during this test
-def upload_content(path, content_type, operation_id):
-    with open(path) as f:
-        content = bytes(f.read(), "utf-8")
-    print("Loaded {} content from {}".format(content_type, path))
+def upload_content(content, content_type, operation_id):
 
     print("Uploading {}".format(content_type))
     resp = requests.post(
@@ -91,25 +91,35 @@ def upload_content(path, content_type, operation_id):
     return content_digest
 
 
-# Step 1: Initialize the operation, get an operation ID
+# Step 1: Run syft
+syft_package_sbom = run_syft(tag_to_scan)
+
+# Step 2: Initialize the operation, get an operation ID
 operation_id = init_operation()
 
 # Step 2: Upload the analysis content types
-image_digest, local_image_id, tags = extract_syft_metadata(syft_package_sbom)
+image_digest, local_image_id, tags, manifest, image_config = extract_syft_metadata(
+    syft_package_sbom
+)
 packages_digest = upload_content(syft_package_sbom, "packages", operation_id)
-dockerfile_digest = upload_content(dockerfile, "dockerfile", operation_id)
+
+if dockerfile:
+    with open(dockerfile) as f:
+        dockerfile_content = f.read()
+    dockerfile_digest = upload_content(dockerfile_content, "dockerfile", operation_id)
+
+else:
+    dockerfile_digest = None
+
 manifest_digest = upload_content(manifest, "manifest", operation_id)
 image_config_digest = upload_content(image_config, "image_config", operation_id)
-parent_manifest_digest = upload_content(
-    parent_manifest, "parent_manifest", operation_id
-)
 
 # Construct the type-to-digest map
 contents = {
     "packages": packages_digest,
     "dockerfile": dockerfile_digest,
     "manifest": manifest_digest,
-    "parent_manifest": parent_manifest_digest,
+    #    "parent_manifest": parent_manifest_digest,
     "image_config": image_config_digest,
 }
 
@@ -119,7 +129,6 @@ add_payload = {
     "source": {
         "import": {
             "digest": image_digest,
-            # "parent_digest": None,
             "local_image_id": local_image_id,
             "contents": contents,
             "tags": tags,
@@ -130,13 +139,13 @@ add_payload = {
 
 # Step 4: Add the image for processing the import via the analysis queue
 print("Adding image/finalizing")
-resp = requests.post("http://localhost/images", json=add_payload, auth=AUTHC)
+resp = requests.post(ENDPOINT + "/images", json=add_payload, auth=AUTHC)
 result = check_response(resp)
 
 # Step 5: Verify the image record now exists
 print("Checking image list")
 resp = requests.get(
-    "http://localhost/images/{digest}".format(digest=image_digest), auth=AUTHC
+    ENDPOINT + "/images/{digest}".format(digest=image_digest), auth=AUTHC
 )
 images = check_response(resp)
 

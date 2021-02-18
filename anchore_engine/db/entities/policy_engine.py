@@ -861,6 +861,7 @@ class NvdV2Metadata(Base):
         ret = [
             {
                 "id": self.name,
+                "description": self.description,
                 cvss_v2_key: self.get_max_cvss_score_nvd(cvss_version=2),
                 cvss_v3_key: self.get_max_cvss_score_nvd(cvss_version=3),
             }

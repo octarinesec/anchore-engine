@@ -277,6 +277,7 @@ def make_cvss_scores(metrics):
     for metric in metrics:
         new_score_packet = {
             "id": metric.get("id"),
+            "description": metric.get("description", {}),
         }
         score_list.append(new_score_packet)
 
@@ -295,6 +296,7 @@ def make_cvss_scores(metrics):
                 "base_score": base_score,
                 "exploitability_score": exploitability_score,
                 "impact_score": impact_score,
+                "vector_string": vector_string,
             }
 
     return score_list

@@ -284,6 +284,7 @@ def make_cvss_scores(metrics):
         for i in [3, 2]:
             cvss_dict = metric.get("cvss_v{}".format(i), {})
             base_metrics = cvss_dict.get("base_metrics", {}) if cvss_dict else {}
+            vector_string = cvss_dict.get("vector_string", "") if cvss_dict else ""
 
             tmp = base_metrics.get("base_score", -1.0)
             base_score = float(tmp) if tmp else -1.0

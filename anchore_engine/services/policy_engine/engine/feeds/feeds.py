@@ -50,7 +50,7 @@ from anchore_engine.subsys.events import (
     FeedGroupSyncStarted,
     FeedGroupSyncCompleted,
     FeedGroupSyncFailed,
-    EventBase,
+    EventBase, VulnerabilityUpdatedReported,
 )
 from anchore_engine.services.policy_engine.engine.feeds.db import (
     lookup_feed,
@@ -224,6 +224,7 @@ class AnchoreServiceFeed(DataFeed):
         full_flush=False,
         local_repo=None,
         operation_id=None,
+        event_client: CatalogClient = None,
     ):
         """
         Sync data from a single group and return the data. This operation is scoped to a transaction on the db.
@@ -495,6 +496,7 @@ class AnchoreServiceFeed(DataFeed):
                     full_flush=full_flush,
                     local_repo=fetched_data,
                     operation_id=operation_id,
+                    event_client=event_client,
                 )  # Each group sync is a transaction
                 result["groups"].append(new_data)
             except Exception as e:
@@ -581,6 +583,7 @@ class VulnerabilityFeed(AnchoreServiceFeed):
         full_flush=False,
         local_repo=None,
         operation_id=None,
+        event_client: CatalogClient = None,
     ):
         """
         Sync data from a single group and return the data. This operation is scoped to a transaction on the db.
@@ -697,6 +700,11 @@ class VulnerabilityFeed(AnchoreServiceFeed):
             group_db_obj.count = self.record_count(group_db_obj.name, db)
             db.add(group_db_obj)
             db.commit()
+            for image in updated_images:
+                notify_event(
+                    VulnerabilityUpdatedReported(user_id=image[0], full_tag=image[1]),
+                    event_client, operation_id
+                )
         except Exception as e:
             logger.exception(
                 log_msg_ctx(

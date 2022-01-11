@@ -36,6 +36,8 @@ from .types import FeedGroupSyncStarted
 from .types import FeedSyncCompleted
 from .types import FeedSyncFailed
 from .types import FeedSyncStarted
+from .types import VulnerabilityUpdatedReported
+
 
 
 ## TODO: Update refs in __init__ to types.py and fix code instances for invocation of events. Then, add API call.

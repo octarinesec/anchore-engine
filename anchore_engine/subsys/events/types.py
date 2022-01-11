@@ -365,6 +365,25 @@ class FeedGroupSyncFailed(SystemFeedsSubcategory):
         )
 
 
+class VulnerabilityUpdatedReported(SystemImageAnalysisSubcategory):
+    """
+    CBC/Carbon Black (octarine) Feed Update feature event.
+    """
+    __event_type__ = "vulnerability_reported"
+    __resource_type__ = _image_tag_resource_type
+    __level__ = EventLevel.INFO
+    __message__ = "Vulnerability update detected for tagged image"
+
+    def __init__(self, user_id, full_tag, data=None):
+        if data is None:
+            data = dict()
+
+        data['image'] = full_tag
+        data['original_user'] = user_id
+
+        super().__init__(user_id='admin', resource_id=full_tag, details=data)
+
+
 class UserPolicySubcategory(UserCategory):
     __subcategory__ = CategoryDescriptor(
         name="policy", description="Events from policy content or configuration changes"

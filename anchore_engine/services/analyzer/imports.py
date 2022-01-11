@@ -132,6 +132,11 @@ def process_import(
 
         timer = time.time()
 
+        distro = syft_packages.get("distro", {}).get("name")
+        id_like = syft_packages.get("distro", {}).get("idLike")
+        if distro == "photon":
+            id_like = "rhel"
+
         # Move data from the syft sbom into the analyzer output
         analyzer_report = {
             "analyzer_meta": {
@@ -139,7 +144,7 @@ def process_import(
                     "base": {
                         "DISTRO": syft_packages.get("distro", {}).get("name"),
                         "DISTROVERS": syft_packages.get("distro", {}).get("version"),
-                        "LIKEDISTRO": syft_packages.get("distro", {}).get("idLike"),
+                        "LIKEDISTRO": id_like,
                     }
                 }
             }

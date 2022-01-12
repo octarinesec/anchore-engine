@@ -41,7 +41,7 @@ class FeedServiceClient(IFeedSource):
         self.feed_url = endpoint
         self.group_url = self.feed_url + "/{feed}"
         self.group_data_url = self.group_url + "/{group}"
-        self.retry_count = 3
+        self.retry_count = 10
 
     def _map_error_to_exception(self, exc, username, url):
         if exc.response.status_code == 401:

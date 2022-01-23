@@ -531,6 +531,7 @@ def make_response_vulnerability_report(vulnerability_type, vulnerability_report)
         vuln_dict["feed"] = result.vulnerability.feed
         vuln_dict["feed_group"] = result.vulnerability.feed_group
         vuln_dict["will_not_fix"] = result.fix.will_not_fix
+        vuln_dict["description"] = result.vulnerability.description
         # backwards compatibility hack
         if result.vulnerability.feed_group and "nvd" in result.vulnerability.feed_group:
             vuln_dict["nvd_data"] = get_nvd_data_from_vulnerability(

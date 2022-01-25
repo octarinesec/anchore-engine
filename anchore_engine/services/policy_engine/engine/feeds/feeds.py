@@ -70,12 +70,14 @@ from anchore_engine.services.policy_engine.engine.feeds.storage import (
     GrypeDBFile,
     GrypeDBStorage,
 )
+from anchore_engine.services.policy_engine.engine.feeds.sync import notify_event
 from anchore_engine.services.policy_engine.engine.vulnerabilities import (
     ThreadLocalFeedGroupNameCache,
     flush_vulnerability_matches,
     process_updated_vulnerability,
 )
 from anchore_engine.subsys import logger
+from anchore_engine.subsys.events import VulnerabilityUpdatedReported
 from anchore_engine.util.time import rfc3339str_to_datetime
 
 IMAGE_VULNERABILITIES_QUEUE = "image_vulnerabilities"
@@ -330,6 +332,8 @@ class AnchoreServiceFeed(LogContextMixin, DataFeed, ABC):
         group_download_result: GroupDownloadResult,
         group_obj: FeedGroupMetadata,
         local_repo: Optional[LocalFeedDataRepo],
+        event_client: CatalogClient = None,
+        operation_id=None,
     ) -> int:
         """
         Convert the download results for a feed group into database records and write to the database session.
@@ -399,6 +403,8 @@ class AnchoreServiceFeed(LogContextMixin, DataFeed, ABC):
         group_download_result: GroupDownloadResult,
         full_flush=False,
         local_repo=None,
+        event_client: CatalogClient = None,
+        operation_id=None,
     ) -> GroupSyncResult:
         """
         Sync data from a single group and return the data. Transactions are batched.
@@ -454,7 +460,12 @@ class AnchoreServiceFeed(LogContextMixin, DataFeed, ABC):
                 )
             )
             result.updated_record_count = self._process_group_file_records(
-                db, group_download_result, group_db_obj, local_repo
+                db,
+                group_download_result,
+                group_db_obj,
+                local_repo,
+                event_client,
+                operation_id,
             )
             db = get_session()
 
@@ -632,6 +643,8 @@ class AnchoreServiceFeed(LogContextMixin, DataFeed, ABC):
                     group_download_result,
                     full_flush=full_flush,
                     local_repo=fetched_data,
+                    event_client=event_client,
+                    operation_id=operation_id,
                 )  # Each group sync is a transaction
                 result.groups.append(new_data)
             except Exception:
@@ -1398,6 +1411,8 @@ class VulnerabilityFeed(AnchoreServiceFeed):
     )
     __vuln_processing_fn__ = process_updated_vulnerability
     __flush_helper_fn__ = flush_vulnerability_matches
+    UPDATED_IMAGE_USER_ID_INDEX = 0
+    UPDATED_IMAGE_IMAGE_ID_INDEX = 1
 
     def _process_group_file_records(
         self,
@@ -1405,6 +1420,8 @@ class VulnerabilityFeed(AnchoreServiceFeed):
         group_download_result: GroupDownloadResult,
         group_obj: FeedGroupMetadata,
         local_repo: Optional[LocalFeedDataRepo],
+        event_client: CatalogClient = None,
+        operation_id=None,
     ) -> int:
         """
         Convert the download results for a feed group into database records and write to the database session.
@@ -1441,6 +1458,17 @@ class VulnerabilityFeed(AnchoreServiceFeed):
 
             if len(updated_image_ids) > 0:
                 db.flush()  # Flush after every one so that mem footprint stays small if lots of images are updated
+
+                # octarine feed update
+                for image in updated_image_ids:
+                    notify_event(
+                        VulnerabilityUpdatedReported(
+                            user_id=image[self.UPDATED_IMAGE_USER_ID_INDEX],
+                            image_id=image[self.UPDATED_IMAGE_IMAGE_ID_INDEX],
+                        ),
+                        event_client,
+                        operation_id,
+                    )
 
             if count >= self.RECORDS_PER_CHUNK:
                 # Commit

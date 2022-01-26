@@ -70,14 +70,13 @@ from anchore_engine.services.policy_engine.engine.feeds.storage import (
     GrypeDBFile,
     GrypeDBStorage,
 )
-from anchore_engine.services.policy_engine.engine.feeds.sync import notify_event
 from anchore_engine.services.policy_engine.engine.vulnerabilities import (
     ThreadLocalFeedGroupNameCache,
     flush_vulnerability_matches,
     process_updated_vulnerability,
 )
 from anchore_engine.subsys import logger
-from anchore_engine.subsys.events import VulnerabilityUpdatedReported
+from anchore_engine.subsys.events import VulnerabilityUpdatedReported, EventBase
 from anchore_engine.util.time import rfc3339str_to_datetime
 
 IMAGE_VULNERABILITIES_QUEUE = "image_vulnerabilities"
@@ -2043,3 +2042,21 @@ def have_vulnerabilities_for(distro_namespace_obj):
                 return True
     else:
         return False
+
+
+def notify_event(event: EventBase, client: CatalogClient, operation_id=None):
+    """
+    Send an event or just log it if client is None
+    Always log the event to info level
+    """
+
+    if client:
+        try:
+            client.add_event(event)
+        except Exception as e:
+            logger.warn("Error adding feed start event: {}".format(e))
+
+    try:
+        logger.info("Event: {} (operation_id={})".format(event.to_json(), operation_id))
+    except TypeError:
+        logger.exception("Error logging event")

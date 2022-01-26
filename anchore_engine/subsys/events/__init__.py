@@ -37,6 +37,7 @@ from .types import (
     TagVulnerabilityUpdated,
     UserAnalyzeImageCompleted,
     UserAnalyzeImageFailed,
+    VulnerabilityUpdatedReported,
 )
 
 ## TODO: Update refs in __init__ to types.py and fix code instances for invocation of events. Then, add API call.

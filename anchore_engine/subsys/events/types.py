@@ -106,6 +106,22 @@ class AnalysisArchiveSubcategory(SystemCategory):
     __resource_type__ = _image_digest_resource_type
 
 
+class VulnerabilityUpdatedReported(SystemImageAnalysisSubcategory):
+    __event_type__ = "vulnerability_reported"
+    __resource_type__ = _image_tag_resource_type
+    __level__ = EventLevel.INFO
+    __message__ = "Vulnerability update detected for tagged image"
+
+    def __init__(self, user_id, image_id, data=None):
+        if data is None:
+            data = dict()
+
+        data["image"] = image_id
+        data["original_user"] = user_id
+
+        super().__init__(user_id="admin", resource_id=image_id, details=data)
+
+
 class ImageRegistryLookupFailed(SystemImageAnalysisSubcategory):
     __event_type__ = "registry_lookup_failed"
     __resource_type__ = _image_reference_type

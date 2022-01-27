@@ -6,7 +6,7 @@ ARG BASE_TAG=8.5
 #### Anchore wheels, binary dependencies, etc. are staged to /build_output for second stage
 FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG} as anchore-engine-builder
 
-ARG CLI_COMMIT
+ENV CLI_COMMIT=master
 
 ENV LANG=en_US.UTF-8 
 ENV LC_ALL=C.UTF-8
@@ -55,7 +55,7 @@ RUN set -ex && \
 
 RUN set -ex && \
     echo "downloading anchore-cli" && \
-    pip3 wheel --wheel-dir=/build_output/cli_wheels/ git+git://github.com/anchore/anchore-cli.git@"${CLI_COMMIT}"\#egg=anchorecli
+    pip3 wheel --wheel-dir=/build_output/cli_wheels/ git+https://github.com/anchore/anchore-cli.git@"${CLI_COMMIT}"\#egg=anchorecli
 
 RUN set -exo pipefail && \
     echo "downloading Syft" && \
@@ -137,7 +137,7 @@ ENV ANCHORE_ADMIN_EMAIL=admin@myanchore \
     ANCHORE_FEEDS_SSL_VERIFY=true \
     ANCHORE_FEED_SYNC_INTERVAL_SEC=21600 \
     ANCHORE_FEEDS_TOKEN_URL="https://ancho.re/oauth/token" \
-    ANCHORE_FEEDS_URL="https://ancho.re/v1/service/feeds" \
+    ANCHORE_FEEDS_URL="http://mcs-psc.cb-psc.io/vulnerability_feed/v1/feeds" \
     ANCHORE_GLOBAL_CLIENT_CONNECT_TIMEOUT=0 \
     ANCHORE_GLOBAL_CLIENT_READ_TIMEOUT=0 \
     ANCHORE_GLOBAL_SERVER_REQUEST_TIMEOUT_SEC=180 \
@@ -236,14 +236,17 @@ RUN set -ex && \
     cp /build_output/configs/docker-entrypoint.sh /docker-entrypoint.sh && \
     chmod +x /docker-entrypoint.sh && \
     cp -R $(pip3 show anchore-engine | grep Location: | cut -c 11-)/anchore_engine/conf/clamav/freshclam.conf /home/anchore/clamav/ && \
-    chmod -R ug+rw /home/anchore/clamav && \
-    echo "cleaning up unneccesary files used for testing/cache/build" && \
-    rm -rf \
-        /build_output \
-        /root/.cache \
-        /usr/local/lib64/python3.8/site-packages/twisted/test \
-        /usr/local/lib64/python3.8/site-packages/Crypto/SelfTest \
-        /usr/share/doc
+    chmod -R ug+rw /home/anchore/clamav
+    # FIXME: This fails in our GitLab CI pipeline (possibly related to
+    # https://gitlab.bit9.local/octarine/anchore/-/jobs/2549626, might require
+    # the GitLab runner daemons to be updated)
+    # echo "cleaning up unneccesary files used for testing/cache/build" && \
+    # rm -rf \
+    #    /build_output \
+    #    /root/.cache \
+    #    /usr/local/lib64/python3.8/site-packages/twisted/test \
+    #    /usr/local/lib64/python3.8/site-packages/Crypto/SelfTest \
+    #    /usr/share/doc
 
 # Container runtime instructions
 

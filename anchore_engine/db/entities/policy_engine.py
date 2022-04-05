@@ -2153,16 +2153,29 @@ class ImagePackage(Base):
 
         pkgkey = pkgversion = None
         likematch = None
+        pkg_name_like = None
         if self.pkg_type in ["java", "maven"]:
             # search for maven hits
             if self.metadata_json:
                 pombuf = self.metadata_json.get("pom.properties", "")
                 if pombuf:
                     pomprops = self.get_pom_properties()
-                    pkgkey = "{}:{}".format(
-                        pomprops.get("groupId"), pomprops.get("artifactId")
-                    )
-                    pkgversion = pomprops.get("version", None)
+                    # TODO - remove this spring4shell hotfix
+                    #  normalization in case of empty pomprops
+                    # {"pom.properties": "groupId=None, artifactId=None, version=None"}
+                    if pomprops.get("groupId") and pomprops.get("artifactId"):
+                        pkgkey = "{}:{}".format(
+                            pomprops.get("groupId"), pomprops.get("artifactId")
+                        )
+                    elif "spring" in self.name:
+                        pkg_name_like = "%{}%".format(self.name)
+                    else:
+                        pkgkey = self.name
+                    if pomprops.get("version", None):
+                        pkgversion = pomprops.get("version", None)
+                    else:
+                        pkgversion = self.version
+
                     likematch = "%java%"
                     do_langscan = True
 
@@ -2212,12 +2225,20 @@ class ImagePackage(Base):
                     "performing LANGPACK vuln scan {} - {}".format(pkgkey, pkgversion)
                 )
                 if pkgkey and pkgversion and likematch:
-                    candidates = (
-                        db.query(FixedArtifact)
-                        .filter(FixedArtifact.name == pkgkey)
-                        .filter(FixedArtifact.version_format == "semver")
-                        .filter(FixedArtifact.namespace_name.like(likematch))
-                    )
+                    if pkg_name_like:
+                        candidates = (
+                            db.query(FixedArtifact)
+                            .filter(FixedArtifact.name.like(pkg_name_like))
+                            .filter(FixedArtifact.version_format == "semver")
+                            .filter(FixedArtifact.namespace_name.like(likematch))
+                        )
+                    else:
+                        candidates = (
+                            db.query(FixedArtifact)
+                            .filter(FixedArtifact.name == pkgkey)
+                            .filter(FixedArtifact.version_format == "semver")
+                            .filter(FixedArtifact.namespace_name.like(likematch))
+                        )
                     for candidate in candidates:
                         if (
                             candidate.vulnerability_id

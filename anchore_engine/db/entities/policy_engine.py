@@ -2126,7 +2126,8 @@ class ImagePackage(Base):
                 kv = line.split("=")
                 key = kv[0].strip()
                 value = "=".join(kv[1:]).strip()
-                props[key] = value
+                if value != "None":
+                    props[key] = value
         return props
 
     def find_vulnerabilities(self):
@@ -2224,8 +2225,13 @@ class ImagePackage(Base):
                 log.debug(
                     "performing LANGPACK vuln scan {} - {}".format(pkgkey, pkgversion)
                 )
-                if pkgkey and pkgversion and likematch:
+                if (pkgkey or pkg_name_like) and pkgversion and likematch:
                     if pkg_name_like:
+                        log.debug(
+                            "performing LANGPACK like vuln scan {} - {}".format(
+                                pkg_name_like, pkgversion
+                            )
+                        )
                         candidates = (
                             db.query(FixedArtifact)
                             .filter(FixedArtifact.name.like(pkg_name_like))

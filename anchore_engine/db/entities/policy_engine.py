@@ -471,6 +471,9 @@ class VulnerableArtifact(Base):
         if (
             vuln_obj.name != package_obj.name
             and vuln_obj.name != package_obj.normalized_src_pkg
+            # TODO: this is meant to address spring java packages. Can we find a better solution?
+            and vuln_obj.name
+            != ":".join([vuln_obj.name.split(":")[0], package_obj.name])
         ):
             log.warn(
                 "Name mismatch in vulnerable check. This should not happen: Fix: {}, Package: {}, Package_Norm_Src: {}, Package_Src: {}".format(
@@ -571,6 +574,8 @@ class FixedArtifact(Base):
         if (
             fix_obj.name != package_obj.name
             and fix_obj.name != package_obj.normalized_src_pkg
+            # TODO: this is meant to address spring java packages. Can we find a better solution?
+            and fix_obj.name != ":".join([fix_obj.name.split(":")[0], package_obj.name])
         ):
             log.warn(
                 "Name mismatch in fix check. This should not happen: Fix: {}, Package: {}, Package_Norm_Src: {}, Package_Src: {}".format(
@@ -3004,6 +3009,10 @@ class ImagePackageVulnerability(Base):
 
         if self.vulnerability.fixed_in:
             name_matches = [self.pkg_name, self.package.normalized_src_pkg]
+            # TODO: this is meant to address spring java packages. Can we find a better solution?
+            for x in self.vulnerability.fixed_in:
+                if ":" in x.name:
+                    name_matches.append(":".join([x.name.split(":")[0], self.pkg_name]))
             return [x for x in self.vulnerability.fixed_in if x.name in name_matches]
         return []
 
